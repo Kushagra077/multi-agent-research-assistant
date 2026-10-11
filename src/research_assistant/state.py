@@ -2,6 +2,7 @@
 # Step 1 needs: question, plan.
 
 from typing import NotRequired, TypedDict
+
 from research_assistant.schemas.plan import Plan
 
 

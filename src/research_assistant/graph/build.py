@@ -9,7 +9,6 @@ from research_assistant.graph.nodes.planner import planner
 from research_assistant.state import GraphState
 
 
-
 def build_graph() -> CompiledStateGraph:
     graph_builder = StateGraph(state_schema=GraphState)
 

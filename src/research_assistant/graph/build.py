@@ -1,3 +1,21 @@
 # Assembles the StateGraph and compiles it.
 # Step 1: intake -> planner, nothing else yet.
-# TODO: build_graph() that wires GraphState + nodes and returns graph.compile().
+
+from langgraph.graph import END, START, StateGraph
+
+from research_assistant.graph.nodes.intake import intake
+from research_assistant.graph.nodes.planner import planner
+from research_assistant.state import GraphState
+
+
+def build_graph() -> StateGraph:
+    graph_builder = StateGraph(state_schema=GraphState)
+
+    graph_builder.add_node("intake", intake)
+    graph_builder.add_node("planner", planner)
+
+    graph_builder.add_edge(START, "intake")
+    graph_builder.add_edge("intake", "planner")
+    graph_builder.add_edge("planner", END)
+
+    return graph_builder.compile()

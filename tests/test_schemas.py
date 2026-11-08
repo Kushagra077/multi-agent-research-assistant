@@ -9,6 +9,7 @@ def test_subtask_gets_unique_ids():
     b = Subtask(description="y")
     assert a.id != b.id
 
+
 def test_plan_rejects_empty_subtasks():
     with pytest.raises(ValidationError):
         Plan(subtasks=[])

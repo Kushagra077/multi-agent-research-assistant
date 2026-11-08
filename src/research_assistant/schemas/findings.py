@@ -30,3 +30,9 @@ class Finding(BaseModel):
         if self.status == "failed" and not self.error:
             raise ValueError("A 'failed' finding needs an error message.")
         return self
+
+
+class ResearchSummary(BaseModel):
+    answer: str = Field(
+        description="A concise answer to the research question, based only on the provided sources."
+    )

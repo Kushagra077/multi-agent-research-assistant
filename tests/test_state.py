@@ -40,7 +40,7 @@ def test_parallel_researchers_all_land_in_findings():
 
 
 def test_each_finding_matches_one_subtask():
-    result = _build_fake_graph(subtask_count=4).invoke({"question": "q"})
+    result = _build_fake_graph(subtask_count=3).invoke({"question": "q"})
     subtask_ids = {s.id for s in result["plan"].subtasks}
     finding_ids = [f.subtask_id for f in result["findings"]]
     assert set(finding_ids) == subtask_ids

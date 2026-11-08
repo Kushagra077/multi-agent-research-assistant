@@ -18,5 +18,6 @@ class Plan(BaseModel):
     """A research plan: the question broken into independent subtasks."""
 
     subtasks: list[Subtask] = Field(
-        min_length=1, description="2 to 5 subtasks that together answer the question."
+        min_length=1,
+        description="2 to 3 subtasks that together answer the question.",
     )

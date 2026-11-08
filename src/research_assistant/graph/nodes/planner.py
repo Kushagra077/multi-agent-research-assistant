@@ -12,7 +12,7 @@ PLANNER_SYSTEM_PROMPT = """You are a research planner. Break the user's research
 question into focused subtasks that separate researchers can work on in parallel.
 
 Rules:
-- Produce 2 to 5 subtasks. Use fewer only if the question is genuinely narrow.
+- Produce 2 to 3 subtasks. Use fewer only if the question is genuinely narrow.
 - Each subtask must be a specific, self-contained question that can be answered \
 with web search. Name the key entities, time frames and constraints from the \
 original question; do not rely on the other subtasks for context.

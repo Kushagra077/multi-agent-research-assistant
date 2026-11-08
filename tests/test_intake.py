@@ -1,5 +1,7 @@
 import pytest
+
 from research_assistant.graph.nodes.intake import intake
+
 
 def test_intake_strips_whitespace():
     assert intake({"question": "  What is RAG?  "}) == {"question": "What is RAG?"}

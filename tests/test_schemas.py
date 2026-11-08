@@ -1,6 +1,8 @@
 import pytest
 from pydantic import ValidationError
+
 from research_assistant.schemas.plan import Plan, Subtask
+
 
 def test_subtask_gets_unique_ids():
     a = Subtask(description="x")

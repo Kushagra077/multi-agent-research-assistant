@@ -23,11 +23,15 @@ state what is missing. Do not make up an answer.
 are recorded separately.
 - Write the answer as plain prose, with no headings."""
 
+
 def _format_sources(sources: list[Source]) -> str:
     blocks = []
     for number, source in enumerate(sources, start=1):
-        blocks.append(f"Source {number}: {source.title}\nURL: {source.url}\n{source.content}")
+        blocks.append(
+            f"Source {number}: {source.title}\nURL: {source.url}\n{source.content}"
+        )
     return "\n\n---\n\n".join(blocks)
+
 
 def researcher(state: ResearcherInput) -> dict:
     subtask = state["subtask"]
@@ -51,7 +55,11 @@ def researcher(state: ResearcherInput) -> dict:
             answer=summary.answer,
             sources=sources,
         )
-    except Exception as e:
-        finding = Finding(subtask_id=subtask.id, status="failed", error=str(e))
+    except Exception as e:  # noqa: BLE001 - deliberate: any failure becomes a typed Finding
+        # `or type(e).__name__` because some exceptions have an empty message, and a
+        # 'failed' Finding must carry a non-empty error.
+        finding = Finding(
+            subtask_id=subtask.id, status="failed", error=str(e) or type(e).__name__
+        )
 
     return {"findings": [finding]}

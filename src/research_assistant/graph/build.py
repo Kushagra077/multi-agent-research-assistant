@@ -1,5 +1,5 @@
 # Assembles the StateGraph and compiles it.
-# Step 1: intake -> planner, nothing else yet.
+# intake -> planner -> researchers (parallel, one per subtask, via Send) -> merge -> END
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -29,6 +29,5 @@ def build_graph() -> CompiledStateGraph:
     graph_builder.add_conditional_edges("planner", dispatch, ["researcher"])
     graph_builder.add_edge("researcher", "merge")
     graph_builder.add_edge("merge", END)
-
 
     return graph_builder.compile()

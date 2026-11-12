@@ -10,7 +10,7 @@ class FakeTavily:
     """Stands in for TavilySearch so no network call or API key is needed."""
 
     last_kwargs: ClassVar[dict] = {}
-    response: ClassVar[dict] = {"results": []}
+    response: ClassVar[dict | str] = {"results": []}
     error: ClassVar[Exception | None] = None
 
     def __init__(self, **kwargs):
@@ -107,3 +107,47 @@ def test_errors_propagate_so_the_researcher_can_report_them(fake_tavily):
     fake_tavily.error = RuntimeError("rate limited")
     with pytest.raises(RuntimeError):
         search_web("anything")
+
+
+# --- Tavily's real habit: failures and empty searches are *returned*, not raised ---
+
+
+def test_error_dict_from_tavily_is_raised_with_the_real_message(fake_tavily):
+    fake_tavily.response = {"error": "ReadTimeout('')"}
+    with pytest.raises(RuntimeError, match="ReadTimeout"):
+        search_web("anything")
+
+
+def test_no_results_message_string_means_no_sources(fake_tavily):
+    fake_tavily.response = "No search results found for 'q'. Suggestions: try again."
+    assert search_web("anything") == []
+
+
+# These two use the REAL TavilySearch class (only the HTTP layer is stubbed), so they
+# fail if the library changes how it reports errors or empty searches.
+
+
+@pytest.fixture
+def real_tavily(monkeypatch):
+    from langchain_tavily import TavilySearch
+    from langchain_tavily._utilities import TavilySearchAPIWrapper
+
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    monkeypatch.setattr(search, "TavilySearch", TavilySearch)
+    return TavilySearchAPIWrapper
+
+
+def test_real_tavily_http_failure_surfaces_as_runtime_error(monkeypatch, real_tavily):
+    def boom(self, **kwargs):
+        raise TimeoutError("read timed out")
+
+    monkeypatch.setattr(real_tavily, "raw_results", boom)
+    with pytest.raises(RuntimeError, match="read timed out"):
+        search_web("anything")
+
+
+def test_real_tavily_empty_search_gives_no_sources(monkeypatch, real_tavily):
+    monkeypatch.setattr(
+        real_tavily, "raw_results", lambda self, **kwargs: {"results": []}
+    )
+    assert search_web("anything") == []

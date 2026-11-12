@@ -7,18 +7,27 @@ from langchain_core.language_models import BaseChatModel
 
 load_dotenv()  # Load environment variables from .env file
 
-PLANNER_MODEL = "gemini-3.8-flash"
+# gemini-3.8-flash kept failing with 503/504 on the free tier, so the planner uses 3.6.
+PLANNER_MODEL = "gemini-3.6-flash"
 RESEARCHER_MODEL = "openai/gpt-oss-20b"
 
 # Free tiers are tight on requests, and every parallel researcher shares one Groq
 # token budget. So: fail fast on a hung call, and retry at most once.
+# The planner has the same caps: a Gemini 503 outage once kept one run retrying for ~5
+# minutes and burned daily quota.
+PLANNER_TIMEOUT_SECONDS = 30
+PLANNER_MAX_RETRIES = 1
 RESEARCHER_TIMEOUT_SECONDS = 30
 RESEARCHER_MAX_RETRIES = 1
 
 
 def get_planner_llm() -> BaseChatModel:
     return init_chat_model(
-        model_provider="google-genai", model=PLANNER_MODEL, temperature=0.0
+        model_provider="google-genai",
+        model=PLANNER_MODEL,
+        temperature=0.0,
+        timeout=PLANNER_TIMEOUT_SECONDS,
+        max_retries=PLANNER_MAX_RETRIES,
     )
 
 

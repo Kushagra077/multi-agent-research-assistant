@@ -13,6 +13,15 @@ def search_web(query: str) -> list[Source]:
     tool = TavilySearch(max_results=MAX_RESULTS, include_raw_content=True)
     response = tool.invoke({"query": query})
 
+    # TavilySearch does not raise on failure; invoke() can return three shapes:
+    #   {"results": [...]}  normal
+    #   {"error": "..."}    any failure (timeout, 429, bad key) is returned, not raised
+    #   "No search results found for ..."  a plain string when nothing matched
+    if isinstance(response, str):
+        return []
+    if "error" in response:
+        raise RuntimeError(f"Tavily search failed: {response['error']}")
+
     sources = []
     for result in response["results"]:
         parts = [

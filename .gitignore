@@ -12,6 +12,10 @@ wheels/
 
 src/research_assistant/notebooks/
 
+# Log files (contain research questions)
+logs/
+*.log
+
 multi-agent-research-assistant-brief.md
 # Personal design log (kept local for now)
 design_decision.md

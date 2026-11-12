@@ -10,6 +10,6 @@ wheels/
 .venv
 .env
 
-src/research_assistant/notebooks
+src/research_assistant/notebooks/
 
 multi-agent-research-assistant-brief.md

@@ -3,7 +3,19 @@ from typing import ClassVar
 import pytest
 
 from research_assistant.tools import search
-from research_assistant.tools.search import RAW_CONTENT_CHARS, search_web
+from research_assistant.tools.search import (
+    MIN_PROSE_LINE_CHARS,
+    RAW_CONTENT_CHARS,
+    _clean_page_text,
+    search_web,
+)
+
+# A line long enough to count as prose, so it survives _clean_page_text.
+PAGE_LINE = (
+    "The full page text, written as one real sentence of prose, long enough "
+    "that it is clearly a paragraph and not a menu."
+)
+assert len(PAGE_LINE) >= MIN_PROSE_LINE_CHARS
 
 
 class FakeTavily:
@@ -36,7 +48,7 @@ def _result(**overrides) -> dict:
         "url": "https://example.com/a",
         "title": "Page A",
         "content": "The snippet.",
-        "raw_content": "The full page text.",
+        "raw_content": PAGE_LINE,
     }
     result.update(overrides)
     return result
@@ -47,7 +59,7 @@ def test_result_becomes_source_with_snippet_then_page_text(fake_tavily):
     [source] = search_web("anything")
     assert source.url == "https://example.com/a"
     assert source.title == "Page A"
-    assert source.content == "The snippet.\n\nThe full page text."
+    assert source.content == f"The snippet.\n\n{PAGE_LINE}"
 
 
 def test_page_text_is_cut_to_the_cap_but_snippet_is_kept_whole(fake_tavily):
@@ -76,7 +88,7 @@ def test_page_text_key_absent_falls_back_to_snippet_only(fake_tavily):
 def test_missing_snippet_falls_back_to_page_text_only(fake_tavily):
     fake_tavily.response = {"results": [_result(content="")]}
     [source] = search_web("anything")
-    assert source.content == "The full page text."
+    assert source.content == PAGE_LINE
 
 
 def test_result_with_no_text_at_all_is_skipped(fake_tavily):
@@ -151,3 +163,89 @@ def test_real_tavily_empty_search_gives_no_sources(monkeypatch, real_tavily):
         real_tavily, "raw_results", lambda self, **kwargs: {"results": []}
     )
     assert search_web("anything") == []
+
+
+# --- _clean_page_text: real junk copied from pages Tavily returned ---------------
+
+FREEBSD_PAGE_HEAD = """[![](/logo-02-terminal.svg)FreeBSD.software](/)
+
+
+
+[Home](/)/[Guides](/blog.html)/SQLite on FreeBSD: Embedded Database Review
+
+review·2026-04-09·12 min read
+
+# SQLite on FreeBSD: Embedded Database Review
+
+In-depth review of SQLite on FreeBSD: embedded database use cases, WAL mode, performance tuning, concurrent access patterns, and comparison with PostgreSQL for small applications.
+
+By FreeBSD Software editors. Verify changes in the[FreeBSD Handbook](https://docs.freebsd.org/en/books/handbook/) and [manual pages](https://man.freebsd.org/).
+"""
+
+REDDIT_PAGE_HEAD = """[Skip to main content](https://www.reddit.com/r/PostgreSQL/#main-content)PostgreSQL wal = 1 concurrent writer? : r/PostgreSQL
+
+Open menu Open navigation[](https://www.reddit.com/)Go to Reddit Home
+
+[Sign Up](https://www.reddit.com/register/)Sign up for Reddit[Log In](https://www.reddit.com/login/)Log in to Reddit
+
+[![Image 1](https://styles.redditmedia.com/icon.png?width=96&s=575f38c1) Go to PostgreSQL](https://www.reddit.com/r/PostgreSQL/)
+
+As i understand pg uses wal mode, is it the same as sqlite in wal mode(1 writer multiple readers) or pg can have real concurrent writers?
+"""
+
+
+def test_cleaner_drops_logos_nav_and_images_but_keeps_the_prose():
+    cleaned = _clean_page_text(FREEBSD_PAGE_HEAD)
+    assert "In-depth review of SQLite on FreeBSD" in cleaned
+    assert "logo-02-terminal" not in cleaned
+    assert "![" not in cleaned
+    assert "review·2026-04-09·12 min read" not in cleaned
+
+
+def test_cleaner_removes_menus_and_signup_links_but_keeps_the_question():
+    cleaned = _clean_page_text(REDDIT_PAGE_HEAD)
+    assert "pg can have real concurrent writers?" in cleaned
+    for junk in (
+        "Open menu",
+        "Sign Up",
+        "Log In",
+        "Reddit Home",
+        "https://",
+        "Image 1",
+    ):
+        assert junk not in cleaned
+
+
+def test_cleaner_keeps_link_text_and_separates_it_from_neighbouring_words():
+    cleaned = _clean_page_text(FREEBSD_PAGE_HEAD)
+    assert "the FreeBSD Handbook and manual pages" in cleaned  # not "theFreeBSD"
+    assert "](" not in cleaned
+
+
+def test_cleaner_drops_lines_shorter_than_the_prose_threshold():
+    short = "x" * (MIN_PROSE_LINE_CHARS - 1)
+    exact = "y" * MIN_PROSE_LINE_CHARS
+    assert _clean_page_text(f"{short}\n{exact}") == exact
+
+
+def test_cleaner_of_nothing_or_all_junk_is_empty():
+    assert _clean_page_text("") == ""
+    assert _clean_page_text("[Home](/)\n![logo](/x.svg)\nMenu") == ""
+
+
+def test_search_web_does_not_pass_page_chrome_to_the_model(fake_tavily):
+    fake_tavily.response = {
+        "results": [_result(content="The snippet.", raw_content=REDDIT_PAGE_HEAD)]
+    }
+    [source] = search_web("anything")
+    assert source.content.startswith("The snippet.\n\n")
+    assert "pg can have real concurrent writers?" in source.content
+    assert "Sign Up" not in source.content
+    assert "Open menu" not in source.content
+
+
+def test_page_text_cap_of_zero_means_snippet_only(fake_tavily, monkeypatch):
+    monkeypatch.setattr(search, "RAW_CONTENT_CHARS", 0)
+    fake_tavily.response = {"results": [_result()]}
+    [source] = search_web("anything")
+    assert source.content == "The snippet."

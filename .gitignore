@@ -13,3 +13,9 @@ wheels/
 src/research_assistant/notebooks/
 
 multi-agent-research-assistant-brief.md
+# Personal design log (kept local for now)
+design_decision.md
+
+# Jupyter notebooks and their checkpoints
+*.ipynb
+.ipynb_checkpoints/

@@ -2,11 +2,16 @@
 # TODO: def planner(state: GraphState) -> dict
 
 
+import logging
+import time
+
 from langchain.messages import HumanMessage, SystemMessage
 
 from research_assistant.llm.providers import get_planner_llm
 from research_assistant.schemas.plan import Plan
 from research_assistant.state import GraphState
+
+logger = logging.getLogger(__name__)
 
 PLANNER_SYSTEM_PROMPT = """You are a research planner. Break the user's research \
 question into focused subtasks that separate researchers can work on in parallel.
@@ -23,8 +28,24 @@ Those happen later; you only plan the research."""
 
 
 def planner(state: GraphState) -> dict:
-    llm = get_planner_llm().with_structured_output(Plan)
     question = state["question"]
-    plan = llm.invoke([SystemMessage(PLANNER_SYSTEM_PROMPT), HumanMessage(question)])
-
+    logger.info("planner start question=%r", question)
+    started = time.perf_counter()
+    try:
+        llm = get_planner_llm().with_structured_output(Plan)
+        plan = llm.invoke(
+            [SystemMessage(PLANNER_SYSTEM_PROMPT), HumanMessage(question)]
+        )
+    except Exception:
+        # Unlike the researcher, the planner does not turn failures into a result: the
+        # run stops here. Log the traceback so the log says where it stopped, then
+        # let the exception continue.
+        logger.exception("planner failed after %.1fs", time.perf_counter() - started)
+        raise
+    logger.info(
+        "planner done subtasks=%d ids=%s elapsed=%.1fs",
+        len(plan.subtasks),
+        [str(subtask.id) for subtask in plan.subtasks],
+        time.perf_counter() - started,
+    )
     return {"plan": plan}

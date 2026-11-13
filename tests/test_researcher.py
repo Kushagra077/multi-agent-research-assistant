@@ -1,3 +1,4 @@
+import logging
 from typing import ClassVar
 
 import pytest
@@ -133,6 +134,49 @@ def test_exception_with_empty_message_still_gives_a_usable_error():
     finding = _only_finding(result)
     assert finding.status == "failed"
     assert finding.error == "TimeoutError"
+
+
+# --- logging --------------------------------------------------------------
+
+
+def test_success_logs_start_llm_and_done_with_the_subtask_id(caplog):
+    with caplog.at_level(logging.INFO, logger=researcher_module.logger.name):
+        subtask, _ = _run()
+    messages = [r.getMessage() for r in caplog.records]
+    sid = str(subtask.id)
+    assert any(m.startswith("researcher start") and sid in m for m in messages)
+    assert any(m.startswith("llm done") and sid in m for m in messages)
+    assert any("researcher done" in m and "status=found" in m for m in messages)
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_failure_logs_one_error_with_traceback_and_the_subtask_id(monkeypatch, caplog):
+    def boom(query):
+        raise RuntimeError("tavily is down")
+
+    monkeypatch.setattr(researcher_module, "search_web", boom)
+    with caplog.at_level(logging.INFO, logger=researcher_module.logger.name):
+        subtask, _ = _run()
+    [record] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert str(subtask.id) in record.getMessage()
+    assert record.exc_info is not None  # the traceback, not just the message
+    assert "tavily is down" in caplog.text
+    assert any("status=failed" in r.getMessage() for r in caplog.records)
+
+
+def test_no_results_is_logged_as_done_not_as_an_error(monkeypatch, caplog):
+    monkeypatch.setattr(researcher_module, "search_web", lambda query: [])
+    with caplog.at_level(logging.INFO, logger=researcher_module.logger.name):
+        _run()
+    assert any("status=no_results" in r.getMessage() for r in caplog.records)
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_log_lines_do_not_contain_answer_or_source_text(caplog):
+    with caplog.at_level(logging.DEBUG, logger=researcher_module.logger.name):
+        _run()
+    assert "A fake answer." not in caplog.text
+    assert "Fact from A." not in caplog.text
 
 
 # --- _format_sources ------------------------------------------------------

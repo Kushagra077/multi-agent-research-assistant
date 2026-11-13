@@ -5,6 +5,7 @@ from typing import ClassVar
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from research_assistant.graph.build import build_graph
 from research_assistant.graph.nodes import planner as planner_module
@@ -156,3 +157,72 @@ def test_without_a_checkpointer_nothing_is_saved_and_reading_state_fails():
     graph.invoke({"question": "q"})
     with pytest.raises(ValueError):
         graph.get_state(_config("t1"))
+
+
+# --- SqliteSaver: state survives closing the saver and starting again ------------
+# Closing the saver and opening a new one on the same file imitates a restart inside
+# one process. The real kill-and-resume test needs a separate process.
+
+
+def test_state_and_history_survive_closing_and_reopening_the_database(tmp_path):
+    db = str(tmp_path / "checkpoints.db")
+    config = _config("t1")
+
+    with SqliteSaver.from_conn_string(db) as saver:
+        result = build_graph(saver).invoke({"question": "What is X?"}, config)
+    # The saver is closed here. Nothing from the first graph is reused below.
+
+    with SqliteSaver.from_conn_string(db) as saver:
+        graph = build_graph(saver)
+        saved = graph.get_state(config)
+        history = list(graph.get_state_history(config))
+
+    assert saved.next == ()
+    assert saved.values["question"] == "What is X?"
+    assert saved.values["plan"] == result["plan"]
+    assert saved.values["findings"] == result["findings"]
+    assert len(history) == 6
+
+
+def test_models_come_back_as_models_from_the_database_file(tmp_path):
+    db = str(tmp_path / "checkpoints.db")
+    config = _config("t1")
+    with SqliteSaver.from_conn_string(db) as saver:
+        build_graph(saver).invoke({"question": "q"}, config)
+
+    with SqliteSaver.from_conn_string(db) as saver:
+        values = build_graph(saver).get_state(config).values
+
+    assert isinstance(values["plan"], Plan)
+    assert all(isinstance(f, Finding) for f in values["findings"])
+
+
+def test_a_new_thread_id_in_the_same_database_starts_empty(tmp_path):
+    db = str(tmp_path / "checkpoints.db")
+    with SqliteSaver.from_conn_string(db) as saver:
+        graph = build_graph(saver)
+        graph.invoke({"question": "q"}, _config("t1"))
+        assert graph.get_state(_config("t2")).values == {}
+
+
+def test_resuming_a_finished_thread_runs_no_node_again(tmp_path, monkeypatch):
+    calls = []
+    real_invoke = FakePlannerLLM.invoke
+
+    def counting_invoke(self, messages):
+        calls.append("planner")
+        return real_invoke(self, messages)
+
+    monkeypatch.setattr(FakePlannerLLM, "invoke", counting_invoke)
+    db = str(tmp_path / "checkpoints.db")
+    config = _config("t1")
+
+    with SqliteSaver.from_conn_string(db) as saver:
+        first = build_graph(saver).invoke({"question": "q"}, config)
+    assert calls == ["planner"]
+
+    with SqliteSaver.from_conn_string(db) as saver:
+        again = build_graph(saver).invoke(None, config)  # None = "just continue"
+
+    assert calls == ["planner"]  # the planner was not called a second time
+    assert again["findings"] == first["findings"]

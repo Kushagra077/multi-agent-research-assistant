@@ -1,4 +1,6 @@
+import logging
 import re
+import time
 
 from dotenv import load_dotenv
 from langchain_tavily import TavilySearch
@@ -6,6 +8,8 @@ from langchain_tavily import TavilySearch
 from research_assistant.schemas.findings import Source
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 2
 # How much cleaned page text to add after Tavily's snippet. 0 = snippet only.
@@ -40,16 +44,28 @@ def _clean_page_text(raw: str) -> str:
 
 
 def search_web(query: str) -> list[Source]:
+    logger.info("search start query=%r", query)
+    started = time.perf_counter()
     tool = TavilySearch(max_results=MAX_RESULTS, include_raw_content=True)
     response = tool.invoke({"query": query})
+    elapsed = time.perf_counter() - started
 
     # TavilySearch does not raise on failure; invoke() can return three shapes:
     #   {"results": [...]}  normal
     #   {"error": "..."}    any failure (timeout, 429, bad key) is returned, not raised
     #   "No search results found for ..."  a plain string when nothing matched
     if isinstance(response, str):
+        logger.info("search no results query=%r elapsed=%.1fs", query, elapsed)
         return []
     if "error" in response:
+        # Log the real Tavily message here, before raising: the caller turns the
+        # exception into a failed finding, and this is the only place that has it.
+        logger.warning(
+            "search error query=%r elapsed=%.1fs tavily_error=%s",
+            query,
+            elapsed,
+            response["error"],
+        )
         raise RuntimeError(f"Tavily search failed: {response['error']}")
 
     sources = []
@@ -58,6 +74,14 @@ def search_web(query: str) -> list[Source]:
         parts = [result.get("content"), page_text[:RAW_CONTENT_CHARS]]
         text = "\n\n".join(p for p in parts if p)
         if not text:
+            logger.debug("search dropped empty result url=%s", result.get("url"))
             continue
         sources.append(Source(url=result["url"], title=result["title"], content=text))
+    logger.info(
+        "search done query=%r results=%d sources=%d elapsed=%.1fs",
+        query,
+        len(response["results"]),
+        len(sources),
+        elapsed,
+    )
     return sources

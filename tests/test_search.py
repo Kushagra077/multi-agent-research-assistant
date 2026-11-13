@@ -1,3 +1,4 @@
+import logging
 from typing import ClassVar
 
 import pytest
@@ -133,6 +134,46 @@ def test_error_dict_from_tavily_is_raised_with_the_real_message(fake_tavily):
 def test_no_results_message_string_means_no_sources(fake_tavily):
     fake_tavily.response = "No search results found for 'q'. Suggestions: try again."
     assert search_web("anything") == []
+
+
+# --- Logging: the Tavily failure must leave a trace in the log ---------------------
+
+
+def test_tavily_error_is_logged_as_a_warning_with_the_real_message(fake_tavily, caplog):
+    fake_tavily.response = {"error": "ReadTimeout('')"}
+    with (
+        caplog.at_level(logging.INFO, logger=search.logger.name),
+        pytest.raises(RuntimeError),
+    ):
+        search_web("my query")
+    [record] = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert "ReadTimeout" in record.getMessage()
+    assert "my query" in record.getMessage()
+
+
+def test_successful_search_logs_start_and_done_with_counts(fake_tavily, caplog):
+    fake_tavily.response = {"results": [_result()]}
+    with caplog.at_level(logging.INFO, logger=search.logger.name):
+        search_web("my query")
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith("search start") for m in messages)
+    assert any("search done" in m and "sources=1" in m for m in messages)
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_no_results_search_is_logged_at_info_not_as_a_warning(fake_tavily, caplog):
+    fake_tavily.response = "No search results found for 'q'."
+    with caplog.at_level(logging.INFO, logger=search.logger.name):
+        assert search_web("my query") == []
+    assert any("no results" in r.getMessage() for r in caplog.records)
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_log_lines_do_not_contain_page_text(fake_tavily, caplog):
+    fake_tavily.response = {"results": [_result()]}
+    with caplog.at_level(logging.DEBUG, logger=search.logger.name):
+        search_web("my query")
+    assert PAGE_LINE not in caplog.text
 
 
 # These two use the REAL TavilySearch class (only the HTTP layer is stubbed), so they

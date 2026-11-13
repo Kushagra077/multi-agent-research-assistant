@@ -1,6 +1,7 @@
 # Assembles the StateGraph and compiles it.
 # intake -> planner -> researchers (parallel, one per subtask, via Send) -> merge -> END
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
@@ -16,7 +17,9 @@ def dispatch(state: GraphState) -> list[Send]:
     return [Send("researcher", {"subtask": s}) for s in state["plan"].subtasks]
 
 
-def build_graph() -> CompiledStateGraph:
+# The caller chooses the checkpointer (InMemorySaver now, SqliteSaver later).
+# None means no checkpoints are saved, which is the behaviour before Phase 3.
+def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStateGraph:
     graph_builder = StateGraph(state_schema=GraphState)
 
     graph_builder.add_node("intake", intake)
@@ -30,4 +33,4 @@ def build_graph() -> CompiledStateGraph:
     graph_builder.add_edge("researcher", "merge")
     graph_builder.add_edge("merge", END)
 
-    return graph_builder.compile()
+    return graph_builder.compile(checkpointer=checkpointer)

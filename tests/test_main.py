@@ -47,6 +47,7 @@ def _review(subtask_id, **overrides):
         "subtask_id": subtask_id,
         "kept_urls": ["https://a.com"],
         "dropped_urls": [],
+        "source_scores": {"https://a.com": 1.83},
         "addresses_subtask": True,
         "used_fallback": False,
     }
@@ -60,21 +61,30 @@ def test_summary_shows_kept_and_dropped_sources_and_the_answer_verdict(capsys):
         _review(
             first.id,
             dropped_urls=["https://youtube.com/watch"],
+            source_scores={"https://a.com": 1.83, "https://youtube.com/watch": 0.2},
             addresses_subtask=False,
         )
     ]
     print_summary(result)
     out = capsys.readouterr().out
     assert "sources: 1 kept, 1 dropped; answers the subtask: NO" in out
-    assert "dropped: https://youtube.com/watch" in out
+    assert "kept    1.83  https://a.com" in out
+    assert "dropped 0.20  https://youtube.com/watch" in out
     assert "Jev was unreachable" not in out
 
 
 def test_summary_says_when_jev_defaults_were_used(capsys):
     result = _result()
-    result["reviews"] = [_review(result["plan"].subtasks[0].id, used_fallback=True)]
+    result["reviews"] = [
+        _review(
+            result["plan"].subtasks[0].id,
+            used_fallback=True,
+            source_scores={"https://a.com": None},
+        )
+    ]
     print_summary(result)
     out = capsys.readouterr().out
+    assert "kept     n/a  https://a.com" in out  # a default is never shown as a score
     assert "answers the subtask: yes" in out
     assert "note: Jev was unreachable, defaults were used" in out
 

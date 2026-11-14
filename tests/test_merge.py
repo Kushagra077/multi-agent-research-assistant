@@ -72,6 +72,7 @@ def test_weak_sources_are_dropped_and_good_ones_kept():
         subtask_id=subtask.id,
         kept_urls=[GOOD.url],
         dropped_urls=[BAD.url],
+        source_scores={GOOD.url: 1.9, BAD.url: 0.2},
         addresses_subtask=True,
         used_fallback=False,
     )
@@ -155,6 +156,7 @@ def test_with_jev_down_everything_passes_and_the_review_says_so(monkeypatch):
     (review,) = merge(_state(_found(subtask, GOOD, BAD), subtask=subtask))["reviews"]
     assert review.kept_urls == [GOOD.url, BAD.url]
     assert review.dropped_urls == []
+    assert review.source_scores == {GOOD.url: None, BAD.url: None}
     assert review.addresses_subtask is True
     assert review.used_fallback is True
 

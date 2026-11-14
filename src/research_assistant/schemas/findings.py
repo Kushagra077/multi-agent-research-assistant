@@ -48,6 +48,10 @@ class Review(BaseModel):
     subtask_id: UUID = Field(description="The id of the Subtask this review is about.")
     kept_urls: list[str] = Field(description="Sources that passed the quality gate.")
     dropped_urls: list[str] = Field(description="Sources the gate removed.")
+    source_scores: dict[str, float | None] = Field(
+        description="Jev's score (0 to 2) for every source, by url, in source order. "
+        "None where Jev was unreachable: the default used then is not a real score."
+    )
     addresses_subtask: bool = Field(
         description="Whether the answer actually responds to its subtask."
     )

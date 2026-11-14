@@ -51,6 +51,7 @@ def _source_text(question: str, source: Source) -> str:
 def _review_finding(finding: Finding, question: str) -> Review:
     kept: list[str] = []
     dropped: list[str] = []
+    scores: dict[str, float | None] = {}
     used_fallback = False
 
     # One Jev call per source, one after another. Fine for 2 sources x 3 subtasks;
@@ -63,6 +64,8 @@ def _review_finding(finding: Finding, question: str) -> Review:
             default=SOURCE_DEFAULT_SCORE,
         )
         used_fallback = used_fallback or decision.fallback
+        # On a fallback the value is our default, not Jev's opinion: record None.
+        scores[source.url] = None if decision.fallback else float(decision.value)
         if decision.value >= MIN_SOURCE_SCORE:
             kept.append(source.url)
         else:
@@ -100,6 +103,7 @@ def _review_finding(finding: Finding, question: str) -> Review:
         subtask_id=finding.subtask_id,
         kept_urls=kept,
         dropped_urls=dropped,
+        source_scores=scores,
         addresses_subtask=addresses_subtask,
         used_fallback=used_fallback,
     )

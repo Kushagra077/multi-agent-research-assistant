@@ -54,8 +54,10 @@ def print_summary(result: dict) -> None:
                 f"      sources: {len(review.kept_urls)} kept, "
                 f"{len(review.dropped_urls)} dropped; answers the subtask: {answer}"
             )
-            for url in review.dropped_urls:
-                print(f"      dropped: {url}")
+            for url, score in review.source_scores.items():
+                verdict = "dropped" if url in review.dropped_urls else "kept   "
+                shown = "n/a" if score is None else f"{score:.2f}"
+                print(f"      {verdict} {shown:>4}  {url}")
             if review.used_fallback:
                 print("      note: Jev was unreachable, defaults were used")
 

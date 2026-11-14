@@ -36,3 +36,21 @@ class ResearchSummary(BaseModel):
     answer: str = Field(
         description="A concise answer to the research question, based only on the provided sources."
     )
+
+
+class Review(BaseModel):
+    """What the merge step decided about one 'found' Finding.
+
+    Holds urls, not whole Sources, so page text is not stored twice in every checkpoint.
+    The Finding keeps all of its sources; `kept_urls` says which ones passed the gate.
+    """
+
+    subtask_id: UUID = Field(description="The id of the Subtask this review is about.")
+    kept_urls: list[str] = Field(description="Sources that passed the quality gate.")
+    dropped_urls: list[str] = Field(description="Sources the gate removed.")
+    addresses_subtask: bool = Field(
+        description="Whether the answer actually responds to its subtask."
+    )
+    used_fallback: bool = Field(
+        description="True if Jev was unreachable for any check, so a default was used."
+    )

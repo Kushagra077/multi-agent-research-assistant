@@ -6,6 +6,7 @@ it mid-run, then starts it again with --resume. It is not a test file itself.
 Fakes:
   - planner LLM: a fixed plan with two fast subtasks and one slow one
   - researcher LLM: a canned answer
+  - Jev: every call fails like an outage, so merge falls back to its defaults
   - web search: appends every query to the file named by CRASH_TEST_CALLS_FILE (so the
     test can count how many times each subtask was searched), and sleeps for a long
     time on the FIRST search of the slow subtask only.
@@ -18,6 +19,9 @@ import sys
 import time
 from pathlib import Path
 
+from typesafe_sdk import TypeSafeAPIConnectionError
+
+from research_assistant.decisions import jev
 from research_assistant.graph.nodes import planner as planner_module
 from research_assistant.graph.nodes import researcher as researcher_module
 from research_assistant.schemas.findings import ResearchSummary, Source
@@ -58,6 +62,17 @@ researcher_module.get_researcher_llm = lambda: FakeLLM(
     ResearchSummary(answer="A fake answer.")
 )
 researcher_module.search_web = fake_search
+
+
+class OfflineJevClient:
+    def __init__(self, **kwargs):
+        pass
+
+    def system_one(self, state, questions):
+        raise TypeSafeAPIConnectionError("crash test runs offline")
+
+
+jev.TypeSafeClient = OfflineJevClient
 
 if __name__ == "__main__":
     from research_assistant.main import main

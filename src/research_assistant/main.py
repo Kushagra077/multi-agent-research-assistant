@@ -25,11 +25,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def print_summary(result: dict) -> None:
-    """Print the plan, then one line per subtask with its finding's status."""
+    """Print the plan, then one line per subtask with its finding's status, plus what
+    the Jev checks in merge decided about it (if a review exists)."""
     subtasks = result["plan"].subtasks
     # Findings arrive in completion order (the researchers run in parallel), so they
     # are matched to subtasks by id, not by position.
     findings_by_id = {f.subtask_id: f for f in result["findings"]}
+    # A run saved before the Jev checks existed has no "reviews" key.
+    reviews_by_id = {r.subtask_id: r for r in result.get("reviews", [])}
 
     print("\nPlan:")
     for number, subtask in enumerate(subtasks, start=1):
@@ -44,6 +47,17 @@ def print_summary(result: dict) -> None:
         print(f"  [{finding.status}] {subtask.description}")
         if finding.status == "failed":
             print(f"      error: {finding.error}")
+        review = reviews_by_id.get(subtask.id)
+        if review is not None:
+            answer = "yes" if review.addresses_subtask else "NO"
+            print(
+                f"      sources: {len(review.kept_urls)} kept, "
+                f"{len(review.dropped_urls)} dropped; answers the subtask: {answer}"
+            )
+            for url in review.dropped_urls:
+                print(f"      dropped: {url}")
+            if review.used_fallback:
+                print("      note: Jev was unreachable, defaults were used")
 
 
 def main() -> None:

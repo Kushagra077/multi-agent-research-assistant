@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from research_assistant.main import print_summary
-from research_assistant.schemas.findings import Finding, Source
+from research_assistant.schemas.findings import Finding, Review, Source
 from research_assistant.schemas.plan import Plan, Subtask
 
 SOURCE = Source(url="https://a.com", title="Page A", content="Fact from A.")
@@ -40,3 +40,46 @@ def test_summary_ignores_findings_that_do_not_belong_to_the_plan(capsys):
     result["findings"].append(Finding(subtask_id=uuid4(), status="no_results"))
     print_summary(result)  # must not raise
     assert "[found] question 1" in capsys.readouterr().out
+
+
+def _review(subtask_id, **overrides):
+    fields = {
+        "subtask_id": subtask_id,
+        "kept_urls": ["https://a.com"],
+        "dropped_urls": [],
+        "addresses_subtask": True,
+        "used_fallback": False,
+    }
+    return Review(**{**fields, **overrides})
+
+
+def test_summary_shows_kept_and_dropped_sources_and_the_answer_verdict(capsys):
+    result = _result()
+    first = result["plan"].subtasks[0]
+    result["reviews"] = [
+        _review(
+            first.id,
+            dropped_urls=["https://youtube.com/watch"],
+            addresses_subtask=False,
+        )
+    ]
+    print_summary(result)
+    out = capsys.readouterr().out
+    assert "sources: 1 kept, 1 dropped; answers the subtask: NO" in out
+    assert "dropped: https://youtube.com/watch" in out
+    assert "Jev was unreachable" not in out
+
+
+def test_summary_says_when_jev_defaults_were_used(capsys):
+    result = _result()
+    result["reviews"] = [_review(result["plan"].subtasks[0].id, used_fallback=True)]
+    print_summary(result)
+    out = capsys.readouterr().out
+    assert "answers the subtask: yes" in out
+    assert "note: Jev was unreachable, defaults were used" in out
+
+
+def test_summary_without_reviews_prints_no_review_lines(capsys):
+    print_summary(_result())  # no "reviews" key, as in a run saved before Phase 4
+    out = capsys.readouterr().out
+    assert "sources:" not in out

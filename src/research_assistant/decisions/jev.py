@@ -7,6 +7,7 @@ import logging
 import time
 
 from dotenv import load_dotenv
+from langsmith import traceable
 from pydantic import BaseModel
 from typesafe_sdk import (
     Choice,
@@ -41,6 +42,15 @@ class Decision(BaseModel):
     model: str | None
 
 
+def _trace_inputs(inputs: dict) -> dict:
+    """What a LangSmith trace records of an ask_* call: everything except the page text,
+    which is replaced by its length (the same rule as the log lines). Tracing is off
+    unless LANGSMITH_TRACING=true; then this runs, and nothing else changes."""
+    shown = dict(inputs)
+    shown["state_chars"] = len(shown.pop("state", ""))
+    return shown
+
+
 def _make_client() -> TypeSafeClient:
     return TypeSafeClient(
         model=JEV_MODEL,
@@ -70,6 +80,7 @@ def _fallback(kind: str, question: str, default: bool | float | str, e: TypeSafe
     return Decision(value=default, confidence=None, fallback=True, model=None)
 
 
+@traceable(run_type="tool", name="jev_boolean", process_inputs=_trace_inputs)
 def ask_boolean(
     state: str, question: str, *, default: bool, threshold: float = 0.5
 ) -> Decision:
@@ -108,6 +119,7 @@ def ask_boolean(
     )
 
 
+@traceable(run_type="tool", name="jev_score", process_inputs=_trace_inputs)
 def ask_score(
     state: str, question: str, levels: list[str], *, default: float
 ) -> Decision:
@@ -151,6 +163,7 @@ def ask_score(
     )
 
 
+@traceable(run_type="tool", name="jev_choice", process_inputs=_trace_inputs)
 def ask_choice(
     state: str, question: str, options: dict[str, str], *, default: str
 ) -> Decision:

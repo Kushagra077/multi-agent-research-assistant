@@ -9,6 +9,11 @@ graph's state schema may be loaded from a checkpoint.
 import os
 
 os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
+# Tracing sends research text to LangSmith. A developer may switch it on in .env for real
+# runs; tests must never send anything, so it is forced off here (and inherited by the
+# subprocess that tests/crash_runner.py runs in).
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
 
 from types import SimpleNamespace

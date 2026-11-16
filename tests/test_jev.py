@@ -260,3 +260,28 @@ def test_choice_log_has_the_result_but_not_the_state_text(caplog):
     assert "'other': 0.2" in message
     assert f"state_chars={len(secret)}" in message
     assert secret not in message
+
+
+# --- tracing: a LangSmith trace of a Jev call never carries the page text -----------
+
+
+def test_the_trace_shows_the_question_and_the_state_size_but_not_the_state():
+    shown = jev._trace_inputs(
+        {"state": "SECRET PAGE TEXT", "question": "Is it good?", "default": False}
+    )
+    assert shown == {"question": "Is it good?", "default": False, "state_chars": 16}
+
+
+def test_the_trace_of_a_score_call_keeps_the_levels():
+    shown = jev._trace_inputs(
+        {"state": "abc", "question": "q?", "levels": ["bad", "good"], "default": 1.0}
+    )
+    assert shown["levels"] == ["bad", "good"]
+    assert "state" not in shown
+
+
+def test_with_tracing_off_the_ask_functions_behave_as_before():
+    # LANGSMITH_TRACING is forced off in conftest.py; the decorator must be invisible.
+    assert ask_boolean("s", "q?", default=False).fallback is False
+    assert ask_score("s", "q?", ["bad", "good"], default=0.0).fallback is False
+    assert ask_choice("s", "q?", OPTIONS, default="escalate").fallback is False

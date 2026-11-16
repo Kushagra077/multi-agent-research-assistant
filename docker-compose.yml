@@ -1,0 +1,48 @@
+# docker compose up --build
+#   API:  http://127.0.0.1:8000/docs     Review page:  http://127.0.0.1:8501
+#
+# Both ports are published on 127.0.0.1 only: the API has no login and spends the keys in
+# .env, so it must not be reachable from other machines.
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      RESEARCH_DB: /data/checkpoints.db
+    volumes:
+      - research-data:/data   # checkpoints: a paused or crashed run survives a restart
+      - research-logs:/app/logs
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  ui:
+    build: .
+    command:
+      - streamlit
+      - run
+      - src/research_assistant/review_ui.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --browser.gatherUsageStats=false
+    environment:
+      RESEARCH_API_URL: http://api:8000   # the page talks to the API only; no keys needed
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  research-data:
+  research-logs:

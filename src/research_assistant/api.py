@@ -2,12 +2,15 @@
 
     POST /runs                     start a run; returns at once with its thread_id
     GET  /runs/{thread_id}         status, plan, sources, decisions, report, ship verdict
+    POST /runs/{thread_id}/review  approve, reject (with feedback) or take over a draft
     POST /runs/{thread_id}/resume  continue a run that failed or was interrupted
     GET  /health
 
 A run takes a minute or more, so POST /runs only starts it (in a background thread) and
-the client polls GET /runs/{thread_id}. State lives in the SQLite checkpoints, which is
-also why /resume works, even after the server itself was restarted. Run it with:
+the client polls GET /runs/{thread_id}. When the report is drafted the run pauses with
+status "awaiting_review" until a person calls POST /runs/{thread_id}/review. State lives
+in the SQLite checkpoints, which is why both the pause and /resume survive a restart of
+the server itself. Run it with:
 
     uvicorn research_assistant.api:app
 """
@@ -23,7 +26,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from research_assistant.schemas.findings import attempts_by_subtask, latest_per_subtask
-from research_assistant.schemas.report import ShipVerdict
+from research_assistant.schemas.report import FinalReport, HumanDecision, ShipVerdict
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,9 @@ os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
 
 THREAD_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-Status = Literal["running", "failed", "interrupted", "done"]
+# awaiting_review: paused at the human approval gate. interrupted: stopped part-way
+# (crash or restart) and not being worked on; /resume continues it.
+Status = Literal["running", "awaiting_review", "failed", "interrupted", "done"]
 
 
 # --- request and response shapes -------------------------------------------
@@ -59,6 +64,11 @@ class StartRun(BaseModel):
         if value is not None and not THREAD_ID_PATTERN.match(value):
             raise ValueError("thread_id may use letters, digits, - and _ (max 64).")
         return value
+
+
+class ReviewRequest(HumanDecision):
+    """The reviewer's answer. Same rules as HumanDecision: reject needs feedback, edit
+    needs text."""
 
 
 class Started(BaseModel):
@@ -94,6 +104,8 @@ class RunView(BaseModel):
     subtasks: list[SubtaskView]
     report: str | None
     ship: ShipVerdict | None
+    feedback: list[str] = Field(description="The reviewer's rejections, oldest first.")
+    final: FinalReport | None = Field(description="Set once the reviewer has decided.")
     error: str | None
 
 
@@ -164,7 +176,7 @@ def create_app(
         if configure_logging:
             setup_logging()
         with SqliteSaver.from_conn_string(db_path) as saver:
-            app.state.graph = build_graph(saver)
+            app.state.graph = build_graph(saver, human_review_gate=True)
             # Runs this process is working on, and the error of runs that failed. Both
             # are in memory only: after a restart a half-finished run simply shows as
             # "interrupted" (its checkpoint still says work is left) and can be resumed.
@@ -187,9 +199,14 @@ def create_app(
         snapshot = state.graph.get_state(config_for(thread_id))
         if not snapshot.values:
             return None
-        return "done" if not snapshot.next else "interrupted"
+        if not snapshot.next:
+            return "done"
+        # A pending interrupt() means the graph is waiting for a person, not stopped.
+        if any(task.interrupts for task in snapshot.tasks):
+            return "awaiting_review"
+        return "interrupted"
 
-    def execute(app: FastAPI, thread_id: str, graph_input: dict | None) -> None:
+    def execute(app: FastAPI, thread_id: str, graph_input: object) -> None:
         """The background job: run the graph, and record how it ended."""
         try:
             app.state.graph.invoke(
@@ -226,6 +243,8 @@ def create_app(
         status = status_of(request, thread_id)
         if status is None:
             raise HTTPException(404, "No such run.")
+        if status == "awaiting_review":
+            raise HTTPException(409, "This run is waiting for a review: use /review.")
         if status not in ("failed", "interrupted"):
             raise HTTPException(409, f"A run that is {status} cannot be resumed.")
         request.app.state.errors.pop(thread_id, None)
@@ -233,6 +252,31 @@ def create_app(
         # None as the input means "continue from the last checkpoint".
         background.add_task(execute, request.app, thread_id, None)
         logger.info("api run resumed thread_id=%s", thread_id)
+        return Started(thread_id=thread_id, status="running")
+
+    @app.post("/runs/{thread_id}/review", status_code=202, response_model=Started)
+    def review_run(
+        thread_id: str,
+        body: ReviewRequest,
+        background: BackgroundTasks,
+        request: Request,
+    ) -> Started:
+        from langgraph.types import Command  # after the strict-mode flag, like the rest
+
+        status = status_of(request, thread_id)
+        if status is None:
+            raise HTTPException(404, "No such run.")
+        if status != "awaiting_review":
+            raise HTTPException(
+                409, f"A run that is {status} is not waiting for review."
+            )
+        request.app.state.running.add(thread_id)
+        # Approve and edit end the run; reject runs the writer again, and the run then
+        # waits for the next review.
+        background.add_task(
+            execute, request.app, thread_id, Command(resume=body.model_dump())
+        )
+        logger.info("api review thread_id=%s action=%s", thread_id, body.action)
         return Started(thread_id=thread_id, status="running")
 
     @app.get("/runs/{thread_id}", response_model=RunView)
@@ -249,6 +293,8 @@ def create_app(
             subtasks=_subtask_views(values),
             report=draft.text if draft else None,
             ship=values.get("ship"),
+            feedback=values.get("feedback", []),
+            final=values.get("final"),
             error=request.app.state.errors.get(thread_id),
         )
 

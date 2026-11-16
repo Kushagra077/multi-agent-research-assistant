@@ -1,6 +1,8 @@
 # Assembles the StateGraph and compiles it.
 # intake -> planner -> researchers (parallel, one per subtask, via Send) -> merge -> decide
-# decide -> researchers again for subtasks that need a retry, otherwise writer -> ship_check -> END
+# decide -> researchers again for subtasks that need a retry, otherwise writer -> ship_check
+# ship_check -> END, or with human_review=True -> human_review (pauses) -> END, or back to
+# writer when the reviewer rejects the draft
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -8,6 +10,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
 from research_assistant.graph.nodes.decide import decide
+from research_assistant.graph.nodes.human_review import human_review
 from research_assistant.graph.nodes.intake import intake
 from research_assistant.graph.nodes.merge import merge
 from research_assistant.graph.nodes.planner import planner
@@ -40,9 +43,20 @@ def retry_dispatch(state: GraphState) -> list[Send] | str:
     return sends or "writer"
 
 
+def after_review(state: GraphState) -> str:
+    """After the reviewer: a final report ends the run; a rejection goes to the writer."""
+    return END if state.get("final") else "writer"
+
+
 # The caller chooses the checkpointer (InMemorySaver now, SqliteSaver later).
 # None means no checkpoints are saved, which is the behaviour before Phase 3.
-def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStateGraph:
+def build_graph(
+    checkpointer: BaseCheckpointSaver | None = None, *, human_review_gate: bool = False
+) -> CompiledStateGraph:
+    """human_review_gate=True pauses the run for a person before it ends. It needs a
+    checkpointer (the pause is saved there), so it is off unless asked for."""
+    if human_review_gate and checkpointer is None:
+        raise ValueError("The human review gate needs a checkpointer.")
     graph_builder = StateGraph(state_schema=GraphState)
 
     graph_builder.add_node("intake", intake)
@@ -62,6 +76,13 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStat
         "decide", retry_dispatch, ["researcher", "writer"]
     )
     graph_builder.add_edge("writer", "ship_check")
-    graph_builder.add_edge("ship_check", END)
+    if human_review_gate:
+        graph_builder.add_node("human_review", human_review)
+        graph_builder.add_edge("ship_check", "human_review")
+        graph_builder.add_conditional_edges(
+            "human_review", after_review, ["writer", END]
+        )
+    else:
+        graph_builder.add_edge("ship_check", END)
 
     return graph_builder.compile(checkpointer=checkpointer)

@@ -30,7 +30,9 @@ not guess.
 per finding with a heading.
 - Remove references such as "(Source 2)": the sources are listed separately.
 - Do not write a list of sources, and do not mention subtasks that are missing; both \
-are added separately."""
+are added separately.
+- If a reviewer's feedback on an earlier draft is given, follow it, but still use only \
+facts that appear in the findings."""
 
 NO_ANSWERS_BODY = "No subtask produced a usable answer, so no report could be written."
 
@@ -92,6 +94,14 @@ def writer(state: GraphState) -> dict:
                 f"Question: {state['question']}\n\nFindings:\n\n"
                 f"{_findings_text(answered)}"
             )
+            feedback = state.get("feedback", [])
+            if feedback:
+                notes = "\n".join(f"- {note}" for note in feedback)
+                human_text += (
+                    f"\n\nA reviewer rejected the earlier draft. Their feedback, "
+                    f"oldest first:\n{notes}\n\nEarlier draft:\n{state['draft'].text}"
+                    f"\n\nWrite a new report that addresses the feedback."
+                )
             reply = get_writer_llm().invoke(
                 [SystemMessage(WRITER_SYSTEM_PROMPT), HumanMessage(human_text)]
             )

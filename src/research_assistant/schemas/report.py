@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Draft(BaseModel):
@@ -29,3 +29,30 @@ class ShipVerdict(BaseModel):
         "answer, so the draft cannot be complete and Jev was not asked. fallback: Jev "
         "was unreachable, so the safe default (not ready) was used."
     )
+
+
+class HumanDecision(BaseModel):
+    """What the reviewer sent back when the graph paused for them."""
+
+    action: Literal["approve", "reject", "edit"]
+    feedback: str | None = Field(
+        default=None, description="Why the draft was rejected (required for reject)."
+    )
+    text: str | None = Field(
+        default=None, description="The reviewer's own final report (required for edit)."
+    )
+
+    @model_validator(mode="after")
+    def check_action_has_what_it_needs(self) -> HumanDecision:
+        if self.action == "reject" and not (self.feedback or "").strip():
+            raise ValueError("A reject needs feedback for the writer.")
+        if self.action == "edit" and not (self.text or "").strip():
+            raise ValueError("An edit needs the replacement text.")
+        return self
+
+
+class FinalReport(BaseModel):
+    """The report that was delivered, and how it got approved."""
+
+    text: str
+    how: Literal["approved", "edited"]

@@ -13,6 +13,7 @@ from research_assistant.api import create_app
 from research_assistant.decisions import jev
 from research_assistant.graph.nodes import planner as planner_module
 from research_assistant.graph.nodes import researcher as researcher_module
+from research_assistant.graph.nodes import writer as writer_module
 from research_assistant.schemas.findings import ResearchSummary, Source
 from research_assistant.schemas.plan import Plan, Subtask
 
@@ -106,7 +107,7 @@ def test_a_run_is_accepted_at_once_and_finishes_with_a_report(tmp_path):
         assert started["status"] == "running"
 
         run = client.get(f"/runs/{started['thread_id']}").json()
-    assert run["status"] == "done"
+    assert run["status"] == "awaiting_review"  # the report is drafted; a person decides
     assert run["question"] == "What are X and Y?"  # cleaned
     assert [s["description"] for s in run["subtasks"]] == ["What is X?", "What is Y?"]
     assert all(s["status"] == "found" and s["attempts"] == 1 for s in run["subtasks"])
@@ -204,12 +205,12 @@ def test_a_failed_run_reports_its_error_and_can_be_resumed(tmp_path):
         resumed = client.post(f"/runs/{thread_id}/resume")
         assert resumed.status_code == 202
         done = client.get(f"/runs/{thread_id}").json()
-    assert done["status"] == "done"
+    assert done["status"] == "awaiting_review"
     assert done["error"] is None
     assert len(done["subtasks"]) == 2
 
 
-def test_a_finished_run_cannot_be_resumed(tmp_path):
+def test_a_run_waiting_for_review_cannot_be_resumed(tmp_path):
     with _client(tmp_path) as client:
         thread_id = client.post("/runs", json={"question": "q"}).json()["thread_id"]
         assert client.post(f"/runs/{thread_id}/resume").status_code == 409
@@ -231,5 +232,109 @@ def test_after_a_server_restart_a_half_finished_run_is_interrupted_and_resumable
         assert after_restart.get(f"/runs/{thread_id}").json()["status"] == "interrupted"
         assert after_restart.post(f"/runs/{thread_id}/resume").status_code == 202
         run = after_restart.get(f"/runs/{thread_id}").json()
-    assert run["status"] == "done"
+    assert run["status"] == "awaiting_review"
     assert "A fake report." in run["report"]
+
+
+# --- the human approval gate ---------------------------------------------------
+
+
+def _waiting_run(client):
+    thread_id = client.post("/runs", json={"question": "q"}).json()["thread_id"]
+    assert client.get(f"/runs/{thread_id}").json()["status"] == "awaiting_review"
+    return thread_id
+
+
+def test_approving_finishes_the_run_with_the_draft_as_the_final_report(tmp_path):
+    with _client(tmp_path) as client:
+        thread_id = _waiting_run(client)
+        before = client.get(f"/runs/{thread_id}").json()
+        assert before["final"] is None
+
+        response = client.post(f"/runs/{thread_id}/review", json={"action": "approve"})
+        assert response.status_code == 202
+        after = client.get(f"/runs/{thread_id}").json()
+    assert after["status"] == "done"
+    assert after["final"] == {"text": before["report"], "how": "approved"}
+
+
+def test_taking_over_delivers_the_reviewers_text(tmp_path):
+    with _client(tmp_path) as client:
+        thread_id = _waiting_run(client)
+        client.post(
+            f"/runs/{thread_id}/review", json={"action": "edit", "text": "Mine."}
+        )
+        run = client.get(f"/runs/{thread_id}").json()
+    assert run["status"] == "done"
+    assert run["final"] == {"text": "Mine.", "how": "edited"}
+
+
+def test_rejecting_with_feedback_redrafts_and_waits_for_the_next_review(
+    tmp_path, monkeypatch
+):
+    prompts = []
+
+    class Writer:
+        def invoke(self, messages):
+            prompts.append(messages[1].content)
+            return SimpleNamespace(content=f"Draft {len(prompts)}")
+
+    monkeypatch.setattr(writer_module, "get_writer_llm", lambda: Writer())
+    with _client(tmp_path) as client:
+        thread_id = _waiting_run(client)
+        client.post(
+            f"/runs/{thread_id}/review",
+            json={"action": "reject", "feedback": "Shorter, please."},
+        )
+        run = client.get(f"/runs/{thread_id}").json()
+    assert run["status"] == "awaiting_review"  # a new draft, waiting again
+    assert run["feedback"] == ["Shorter, please."]
+    assert run["report"].startswith("Draft 2")
+    assert run["final"] is None
+    assert "- Shorter, please." in prompts[1]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"action": "reject"},
+        {"action": "reject", "feedback": "  "},
+        {"action": "edit"},
+        {"action": "shrug"},
+        {},
+    ],
+)
+def test_a_review_missing_what_it_needs_is_refused_and_the_run_keeps_waiting(
+    tmp_path, body
+):
+    with _client(tmp_path) as client:
+        thread_id = _waiting_run(client)
+        assert client.post(f"/runs/{thread_id}/review", json=body).status_code == 422
+        assert client.get(f"/runs/{thread_id}").json()["status"] == "awaiting_review"
+
+
+def test_only_a_run_that_is_waiting_can_be_reviewed(tmp_path):
+    with _client(tmp_path) as client:
+        assert (
+            client.post("/runs/nope/review", json={"action": "approve"}).status_code
+            == 404
+        )
+        thread_id = _waiting_run(client)
+        client.post(f"/runs/{thread_id}/review", json={"action": "approve"})
+        again = client.post(f"/runs/{thread_id}/review", json={"action": "approve"})
+    assert again.status_code == 409  # already done
+
+
+def test_a_run_waiting_for_review_survives_a_server_restart(tmp_path):
+    with _client(tmp_path) as before_restart:
+        thread_id = _waiting_run(before_restart)
+        report = before_restart.get(f"/runs/{thread_id}").json()["report"]
+
+    with _client(tmp_path) as after_restart:  # a new process, same database
+        run = after_restart.get(f"/runs/{thread_id}").json()
+        assert run["status"] == "awaiting_review"  # waiting, not "interrupted"
+        assert run["report"] == report
+        after_restart.post(f"/runs/{thread_id}/review", json={"action": "approve"})
+        done = after_restart.get(f"/runs/{thread_id}").json()
+    assert done["status"] == "done"
+    assert done["final"]["text"] == report

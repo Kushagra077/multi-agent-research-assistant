@@ -7,7 +7,7 @@ from typing import Annotated, NotRequired, TypedDict
 
 from research_assistant.schemas.findings import Finding, Review
 from research_assistant.schemas.plan import Plan, Subtask
-from research_assistant.schemas.report import Draft, ShipVerdict
+from research_assistant.schemas.report import Draft, FinalReport, ShipVerdict
 from research_assistant.schemas.retry import RetryDecision
 
 
@@ -26,6 +26,10 @@ class GraphState(TypedDict):
     # human send the draft back, which will overwrite these.
     draft: NotRequired[Draft]
     ship: NotRequired[ShipVerdict]
+    # The reviewer's rejections, oldest first; the writer reads them on the next draft.
+    feedback: NotRequired[Annotated[list[str], add]]
+    # Set once, when the reviewer approves or takes over. Its presence ends the run.
+    final: NotRequired[FinalReport]
 
 
 class ResearcherInput(TypedDict):

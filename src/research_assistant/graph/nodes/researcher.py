@@ -40,14 +40,18 @@ def _format_sources(sources: list[Source]) -> str:
 
 def researcher(state: ResearcherInput) -> dict:
     subtask = state["subtask"]
+    exclude_domains = state.get("exclude_domains", [])
     started = time.perf_counter()
     # Researchers run in parallel, so their log lines interleave: every line below
     # carries subtask_id to tell them apart.
     logger.info(
-        "researcher start subtask_id=%s description=%r", subtask.id, subtask.description
+        "researcher start subtask_id=%s description=%r exclude_domains=%s",
+        subtask.id,
+        subtask.description,
+        exclude_domains,
     )
     try:
-        sources = search_web(subtask.description)
+        sources = search_web(subtask.description, exclude_domains=exclude_domains)
         if not sources:
             finding = Finding(subtask_id=subtask.id, status="no_results")
             logger.info(

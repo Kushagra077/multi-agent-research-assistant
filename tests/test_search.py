@@ -8,6 +8,7 @@ from research_assistant.tools.search import (
     MIN_PROSE_LINE_CHARS,
     RAW_CONTENT_CHARS,
     _clean_page_text,
+    domain_of,
     search_web,
 )
 
@@ -290,3 +291,42 @@ def test_page_text_cap_of_zero_means_snippet_only(fake_tavily, monkeypatch):
     fake_tavily.response = {"results": [_result()]}
     [source] = search_web("anything")
     assert source.content == "The snippet."
+
+
+@pytest.mark.parametrize(
+    ("url", "domain"),
+    [
+        ("https://www.amazon.com/First-Lessons/dp/1540002926", "amazon.com"),
+        ("https://amazon.com", "amazon.com"),
+        ("http://WWW.Example.COM/Page", "example.com"),
+        # other subdomains are kept: rejecting one must not exclude the whole site
+        ("https://lessons.talkalmanmusic.com/blog/x", "lessons.talkalmanmusic.com"),
+        ("https://dev.to/user/post?x=1#top", "dev.to"),
+        ("https://example.com:8080/a", "example.com"),
+        ("not a url", ""),
+        ("", ""),
+    ],
+)
+def test_domain_of_gives_the_host_in_the_form_tavily_expects(url, domain):
+    assert domain_of(url) == domain
+
+
+def test_excluded_domains_are_passed_to_tavily(fake_tavily):
+    search_web("anything", exclude_domains=["amazon.com", "dev.to"])
+    assert fake_tavily.last_kwargs == {
+        "max_results": search.MAX_RESULTS,
+        "include_raw_content": True,
+        "exclude_domains": ["amazon.com", "dev.to"],
+    }
+
+
+@pytest.mark.parametrize("nothing", [None, []])
+def test_no_exclusions_leaves_the_tavily_call_unchanged(fake_tavily, nothing):
+    search_web("anything", exclude_domains=nothing)
+    assert "exclude_domains" not in fake_tavily.last_kwargs
+
+
+def test_the_exclusions_are_logged_with_the_search(fake_tavily, caplog):
+    with caplog.at_level(logging.INFO, logger=search.logger.name):
+        search_web("my query", exclude_domains=["amazon.com"])
+    assert "exclude_domains=['amazon.com']" in caplog.text

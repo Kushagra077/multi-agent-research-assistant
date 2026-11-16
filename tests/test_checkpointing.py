@@ -44,7 +44,11 @@ def fakes(monkeypatch):
     monkeypatch.setattr(
         researcher_module, "get_researcher_llm", lambda: FakeResearcherLLM()
     )
-    monkeypatch.setattr(researcher_module, "search_web", lambda query: list(SOURCES))
+    monkeypatch.setattr(
+        researcher_module,
+        "search_web",
+        lambda query, exclude_domains=None: list(SOURCES),
+    )
 
 
 def _config(thread_id: str) -> dict:

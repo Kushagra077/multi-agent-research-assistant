@@ -38,6 +38,27 @@ class ResearchSummary(BaseModel):
     )
 
 
+def latest_per_subtask(findings: list[Finding]) -> dict[UUID, Finding]:
+    """The newest finding of each subtask.
+
+    `findings` only ever grows (the reducer appends), and a retry is appended after the
+    attempt it replaces, so the last finding of a subtask in the list is its newest.
+    The older ones stay in the list as history.
+    """
+    return {finding.subtask_id: finding for finding in findings}
+
+
+def attempts_by_subtask(findings: list[Finding]) -> dict[UUID, int]:
+    """How many times each subtask has been researched (1 = first attempt only).
+
+    Derived from the findings themselves, so it cannot drift out of step with them.
+    """
+    attempts: dict[UUID, int] = {}
+    for finding in findings:
+        attempts[finding.subtask_id] = attempts.get(finding.subtask_id, 0) + 1
+    return attempts
+
+
 class Review(BaseModel):
     """What the merge step decided about one 'found' Finding.
 
@@ -46,6 +67,10 @@ class Review(BaseModel):
     """
 
     subtask_id: UUID = Field(description="The id of the Subtask this review is about.")
+    attempt: int = Field(
+        ge=1,
+        description="Which attempt at the subtask this review covers (1 = the first).",
+    )
     kept_urls: list[str] = Field(description="Sources that passed the quality gate.")
     dropped_urls: list[str] = Field(description="Sources the gate removed.")
     source_scores: dict[str, float | None] = Field(

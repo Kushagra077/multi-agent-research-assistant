@@ -70,6 +70,7 @@ def test_weak_sources_are_dropped_and_good_ones_kept():
     (review,) = merge(state)["reviews"]
     assert review == Review(
         subtask_id=subtask.id,
+        attempt=1,
         kept_urls=[GOOD.url],
         dropped_urls=[BAD.url],
         source_scores={GOOD.url: 1.9, BAD.url: 0.2},
@@ -181,3 +182,94 @@ def test_merge_with_no_findings_logs_zeros_and_returns_no_reviews(caplog):
     with caplog.at_level(logging.INFO, logger=merge_module.logger.name):
         assert merge(state) == {"reviews": []}
     assert "findings=0 found=0 no_results=0 failed=0" in caplog.text
+
+
+# --- retries: merge runs again and must only review what is new ---------------
+
+
+def _review(subtask, attempt=1, **overrides):
+    fields = {
+        "subtask_id": subtask.id,
+        "attempt": attempt,
+        "kept_urls": [GOOD.url],
+        "dropped_urls": [],
+        "source_scores": {GOOD.url: 1.9},
+        "addresses_subtask": True,
+        "used_fallback": False,
+    }
+    return Review(**{**fields, **overrides})
+
+
+def test_an_attempt_that_is_already_reviewed_costs_no_jev_calls():
+    subtask = Subtask(description="What is X?")
+    state = _state(_found(subtask, GOOD), subtask=subtask)
+    state["reviews"] = [_review(subtask, attempt=1)]
+    assert merge(state) == {"reviews": []}
+    assert FakeJev.calls == []
+
+
+def test_a_retry_is_reviewed_as_the_next_attempt_using_only_the_newest_finding():
+    subtask = Subtask(description="What is X?")
+    first = _found(subtask, BAD)  # attempt 1: the gate rejected its only source
+    retry = _found(subtask, GOOD)  # attempt 2
+    state = _state(first, retry, subtask=subtask)
+    state["reviews"] = [
+        _review(
+            subtask,
+            attempt=1,
+            kept_urls=[],
+            dropped_urls=[BAD.url],
+            source_scores={BAD.url: 0.2},
+            addresses_subtask=False,
+        )
+    ]
+    (review,) = merge(state)["reviews"]
+    assert review.attempt == 2
+    assert review.kept_urls == [GOOD.url]
+    assert review.addresses_subtask is True
+    # Jev saw only the retry's page, never the old attempt's.
+    assert [kind for kind, _ in FakeJev.calls] == ["score", "noul"]
+    assert GOOD.url in FakeJev.calls[0][1]
+    assert not any(BAD.url in text for _, text in FakeJev.calls)
+
+
+def test_only_the_subtask_that_was_retried_is_reviewed_again():
+    done = Subtask(description="What is X?")
+    retried = Subtask(description="What is Z?")
+    state = {
+        "question": "q",
+        "plan": Plan(subtasks=[done, retried]),
+        "findings": [
+            _found(done, GOOD),
+            _found(retried, BAD),
+            _found(retried, OKAY),
+        ],
+        "reviews": [_review(done), _review(retried, attempt=1, kept_urls=[])],
+    }
+    (review,) = merge(state)["reviews"]
+    assert review.subtask_id == retried.id
+    assert review.attempt == 2
+
+
+def test_the_status_counts_describe_the_newest_finding_of_each_subtask(caplog):
+    subtask = Subtask(description="What is X?")
+    state = _state(
+        Finding(subtask_id=subtask.id, status="failed", error="boom"),
+        _found(subtask, GOOD),
+        subtask=subtask,
+    )
+    with caplog.at_level(logging.INFO, logger=merge_module.logger.name):
+        merge(state)
+    assert "merge findings=1 found=1 no_results=0 failed=0" in caplog.text
+
+
+def test_a_retry_that_failed_gets_no_review_and_keeps_the_old_one_as_history():
+    subtask = Subtask(description="What is X?")
+    state = _state(
+        _found(subtask, BAD),
+        Finding(subtask_id=subtask.id, status="no_results"),
+        subtask=subtask,
+    )
+    state["reviews"] = [_review(subtask, attempt=1)]
+    assert merge(state) == {"reviews": []}
+    assert FakeJev.calls == []

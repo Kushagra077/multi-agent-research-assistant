@@ -45,7 +45,7 @@ class FakeLLM:
         return self.reply
 
 
-def fake_search(query: str) -> list[Source]:
+def fake_search(query: str, exclude_domains=None) -> list[Source]:
     already_searched = CALLS_FILE.exists() and query in CALLS_FILE.read_text().split(
         "\n"
     )

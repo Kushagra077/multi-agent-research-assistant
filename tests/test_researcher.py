@@ -46,7 +46,11 @@ def fakes(monkeypatch):
     FakeLLM.structured_calls = []
     FakeLLM.invoked_with = []
     monkeypatch.setattr(researcher_module, "get_researcher_llm", lambda: FakeLLM())
-    monkeypatch.setattr(researcher_module, "search_web", lambda query: list(SOURCES))
+    monkeypatch.setattr(
+        researcher_module,
+        "search_web",
+        lambda query, exclude_domains=None: list(SOURCES),
+    )
 
 
 def _run(description: str = "What is X?") -> tuple[Subtask, dict]:
@@ -91,7 +95,9 @@ def test_prompt_has_system_prompt_question_and_numbered_sources():
 
 
 def test_no_sources_gives_no_results_and_never_calls_the_llm(monkeypatch):
-    monkeypatch.setattr(researcher_module, "search_web", lambda query: [])
+    monkeypatch.setattr(
+        researcher_module, "search_web", lambda query, exclude_domains=None: []
+    )
     subtask, result = _run()
     finding = _only_finding(result)
     assert finding.status == "no_results"
@@ -101,7 +107,7 @@ def test_no_sources_gives_no_results_and_never_calls_the_llm(monkeypatch):
 
 
 def test_search_error_becomes_a_failed_finding(monkeypatch):
-    def boom(query):
+    def boom(query, exclude_domains=None):
         raise RuntimeError("tavily is down")
 
     monkeypatch.setattr(researcher_module, "search_web", boom)
@@ -151,7 +157,7 @@ def test_success_logs_start_llm_and_done_with_the_subtask_id(caplog):
 
 
 def test_failure_logs_one_error_with_traceback_and_the_subtask_id(monkeypatch, caplog):
-    def boom(query):
+    def boom(query, exclude_domains=None):
         raise RuntimeError("tavily is down")
 
     monkeypatch.setattr(researcher_module, "search_web", boom)
@@ -165,7 +171,9 @@ def test_failure_logs_one_error_with_traceback_and_the_subtask_id(monkeypatch, c
 
 
 def test_no_results_is_logged_as_done_not_as_an_error(monkeypatch, caplog):
-    monkeypatch.setattr(researcher_module, "search_web", lambda query: [])
+    monkeypatch.setattr(
+        researcher_module, "search_web", lambda query, exclude_domains=None: []
+    )
     with caplog.at_level(logging.INFO, logger=researcher_module.logger.name):
         _run()
     assert any("status=no_results" in r.getMessage() for r in caplog.records)
@@ -219,3 +227,39 @@ def test_real_researcher_runs_in_parallel_inside_a_graph():
         s.id for s in result["plan"].subtasks
     }
     assert all(f.status == "found" for f in result["findings"])
+
+
+# --- retries: sites the source gate rejected are skipped -------------------
+
+
+def test_exclude_domains_from_the_input_reach_the_search(monkeypatch):
+    seen = {}
+
+    def fake_search(query, exclude_domains=None):
+        seen["exclude_domains"] = exclude_domains
+        return list(SOURCES)
+
+    monkeypatch.setattr(researcher_module, "search_web", fake_search)
+    subtask = Subtask(description="What is X?")
+    result = researcher({"subtask": subtask, "exclude_domains": ["amazon.com"]})
+    assert seen["exclude_domains"] == ["amazon.com"]
+    assert _only_finding(result).status == "found"
+
+
+def test_a_first_attempt_has_no_exclusions(monkeypatch):
+    seen = {}
+
+    def fake_search(query, exclude_domains=None):
+        seen["exclude_domains"] = exclude_domains
+        return list(SOURCES)
+
+    monkeypatch.setattr(researcher_module, "search_web", fake_search)
+    _run()  # the input has no "exclude_domains" key at all
+    assert seen["exclude_domains"] == []
+
+
+def test_the_start_log_line_shows_the_exclusions(caplog):
+    subtask = Subtask(description="What is X?")
+    with caplog.at_level(logging.INFO, logger=researcher_module.logger.name):
+        researcher({"subtask": subtask, "exclude_domains": ["amazon.com"]})
+    assert "exclude_domains=['amazon.com']" in caplog.text

@@ -45,6 +45,7 @@ def test_summary_ignores_findings_that_do_not_belong_to_the_plan(capsys):
 def _review(subtask_id, **overrides):
     fields = {
         "subtask_id": subtask_id,
+        "attempt": 1,
         "kept_urls": ["https://a.com"],
         "dropped_urls": [],
         "source_scores": {"https://a.com": 1.83},

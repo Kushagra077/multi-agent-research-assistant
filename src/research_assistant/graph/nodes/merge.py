@@ -3,14 +3,22 @@
 #   1. Source-quality gate (score): rate each source of a 'found' finding against its
 #      subtask and drop the weak ones.
 #   2. Health check (boolean): does the answer actually address its subtask?
-# The result goes into state["reviews"]. state["findings"] is left exactly as the
+# The result is appended to state["reviews"]. state["findings"] is left exactly as the
 # researchers produced it, so nothing is lost and a human can still see dropped sources.
+# merge runs again after a retry, so it only reviews what has not been reviewed yet:
+# the newest finding of each subtask, once per attempt.
 
 import logging
 from collections import Counter
 
 from research_assistant.decisions.jev import ask_boolean, ask_score
-from research_assistant.schemas.findings import Finding, Review, Source
+from research_assistant.schemas.findings import (
+    Finding,
+    Review,
+    Source,
+    attempts_by_subtask,
+    latest_per_subtask,
+)
 from research_assistant.state import GraphState
 
 logger = logging.getLogger(__name__)
@@ -48,7 +56,7 @@ def _source_text(question: str, source: Source) -> str:
     )
 
 
-def _review_finding(finding: Finding, question: str) -> Review:
+def _review_finding(finding: Finding, question: str, attempt: int) -> Review:
     kept: list[str] = []
     dropped: list[str] = []
     scores: dict[str, float | None] = {}
@@ -91,9 +99,10 @@ def _review_finding(finding: Finding, question: str) -> Review:
         addresses_subtask = False
 
     logger.info(
-        "merge reviewed subtask_id=%s kept=%d dropped=%d addresses_subtask=%s "
-        "used_fallback=%s",
+        "merge reviewed subtask_id=%s attempt=%d kept=%d dropped=%d "
+        "addresses_subtask=%s used_fallback=%s",
         finding.subtask_id,
+        attempt,
         len(kept),
         len(dropped),
         addresses_subtask,
@@ -101,6 +110,7 @@ def _review_finding(finding: Finding, question: str) -> Review:
     )
     return Review(
         subtask_id=finding.subtask_id,
+        attempt=attempt,
         kept_urls=kept,
         dropped_urls=dropped,
         source_scores=scores,
@@ -110,25 +120,33 @@ def _review_finding(finding: Finding, question: str) -> Review:
 
 
 def merge(state: GraphState) -> dict:
+    # Only the newest finding of each subtask counts; older attempts are history.
     findings = state.get("findings", [])
-    counts = Counter(finding.status for finding in findings)
+    latest = latest_per_subtask(findings)
+    attempts = attempts_by_subtask(findings)
+    counts = Counter(finding.status for finding in latest.values())
     logger.info(
         "merge findings=%d found=%d no_results=%d failed=%d",
-        len(findings),
+        len(latest),
         counts["found"],
         counts["no_results"],
         counts["failed"],
     )
 
     questions = {s.id: s.description for s in state["plan"].subtasks}
+    # What is already reviewed, so a second pass over the same attempt costs no Jev call.
+    already_reviewed = {(r.subtask_id, r.attempt) for r in state.get("reviews", [])}
     reviews = []
     # Only 'found' findings have sources and an answer to check. no_results and failed
-    # ones get no review; the retry-vs-escalate decision (later) handles those.
-    for finding in findings:
+    # ones get no review; the retry-vs-escalate decision handles those.
+    for subtask_id, finding in latest.items():
         if finding.status != "found":
             continue
-        if finding.subtask_id not in questions:
-            logger.warning("merge skipped finding not in plan: %s", finding.subtask_id)
+        if subtask_id not in questions:
+            logger.warning("merge skipped finding not in plan: %s", subtask_id)
             continue
-        reviews.append(_review_finding(finding, questions[finding.subtask_id]))
+        attempt = attempts[subtask_id]
+        if (subtask_id, attempt) in already_reviewed:
+            continue
+        reviews.append(_review_finding(finding, questions[subtask_id], attempt))
     return {"reviews": reviews}

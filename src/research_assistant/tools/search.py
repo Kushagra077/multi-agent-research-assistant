@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from langchain_tavily import TavilySearch
@@ -43,10 +44,28 @@ def _clean_page_text(raw: str) -> str:
     return "\n".join(line for line in lines if len(line) >= MIN_PROSE_LINE_CHARS)
 
 
-def search_web(query: str) -> list[Source]:
-    logger.info("search start query=%r", query)
+def domain_of(url: str) -> str:
+    """The site a url belongs to, in the form Tavily's exclude_domains takes.
+
+    "https://www.amazon.com/dp/123" -> "amazon.com". A leading "www." is dropped; other
+    subdomains are kept, so a rejected "lessons.example.com" does not exclude all of
+    "example.com". Returns "" if the url has no host.
+    """
+    host = (urlparse(url).hostname or "").lower()
+    return host.removeprefix("www.")
+
+
+def search_web(query: str, exclude_domains: list[str] | None = None) -> list[Source]:
+    """Search the web and return cleaned sources. `exclude_domains` are skipped."""
+    logger.info(
+        "search start query=%r exclude_domains=%s", query, exclude_domains or []
+    )
     started = time.perf_counter()
-    tool = TavilySearch(max_results=MAX_RESULTS, include_raw_content=True)
+    tool_kwargs: dict = {"max_results": MAX_RESULTS, "include_raw_content": True}
+    # Only sent when there is something to exclude, so a normal search is unchanged.
+    if exclude_domains:
+        tool_kwargs["exclude_domains"] = exclude_domains
+    tool = TavilySearch(**tool_kwargs)
     response = tool.invoke({"query": query})
     elapsed = time.perf_counter() - started
 

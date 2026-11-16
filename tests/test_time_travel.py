@@ -40,7 +40,7 @@ class FakeResearcherLLM:
         return ResearchSummary(answer="A fake answer.")
 
 
-def fake_search(query: str) -> list[Source]:
+def fake_search(query: str, exclude_domains=None) -> list[Source]:
     Calls.searches += 1
     return [Source(url="https://a.com", title="Page A", content=f"About {query}.")]
 

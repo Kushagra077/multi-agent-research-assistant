@@ -11,7 +11,12 @@ from typesafe_sdk import (
 )
 
 from research_assistant.decisions import jev
-from research_assistant.decisions.jev import Decision, ask_boolean, ask_score
+from research_assistant.decisions.jev import (
+    Decision,
+    ask_boolean,
+    ask_choice,
+    ask_score,
+)
 
 
 class FakeClient:
@@ -20,6 +25,8 @@ class FakeClient:
     probability: ClassVar[float] = 0.9
     score: ClassVar[float] = 1.7
     score_confidence: ClassVar[float] = 0.55
+    choice: ClassVar[str] = "retry_different"
+    choice_confidence: ClassVar[float] = 0.8
     error: ClassVar[Exception | None] = None
     last_init: ClassVar[dict] = {}
     last_call: ClassVar[dict] = {}
@@ -39,6 +46,13 @@ class FakeClient:
                     score=FakeClient.score, confidence=FakeClient.score_confidence
                 )
             },
+            choices={
+                "q": SimpleNamespace(
+                    choice=FakeClient.choice,
+                    confidence=FakeClient.choice_confidence,
+                    probabilities={FakeClient.choice: 0.8, "other": 0.2},
+                )
+            },
         )
 
 
@@ -47,6 +61,8 @@ def fake_client(monkeypatch):
     FakeClient.probability = 0.9
     FakeClient.score = 1.7
     FakeClient.score_confidence = 0.55
+    FakeClient.choice = "retry_different"
+    FakeClient.choice_confidence = 0.8
     FakeClient.error = None
     FakeClient.last_init = {}
     FakeClient.last_call = {}
@@ -183,5 +199,64 @@ def test_score_log_has_the_result_but_not_the_state_text(caplog):
     message = record.getMessage()
     assert "score=1.70" in message
     assert "levels=3" in message
+    assert f"state_chars={len(secret)}" in message
+    assert secret not in message
+
+
+OPTIONS = {
+    "retry_same": "Search again with the same query.",
+    "retry_different": "Search again, skipping the sites that were rejected.",
+    "escalate": "Stop and ask a human.",
+}
+
+
+def test_choice_returns_the_chosen_option_name_and_confidence():
+    decision = ask_choice("some state", "What next?", OPTIONS, default="escalate")
+    assert decision == Decision(
+        value="retry_different", confidence=0.8, fallback=False, model="jev-1.13.0"
+    )
+    assert isinstance(decision.value, str)
+
+
+def test_choice_request_carries_the_options_with_their_descriptions():
+    ask_choice("the state text", "What next?", OPTIONS, default="escalate")
+    assert FakeClient.last_call["state"] == "the state text"
+    question = FakeClient.last_call["questions"]["q"]
+    assert question.type == "choice"
+    assert question.instructions == "What next?"
+    assert dict(question.criteria) == OPTIONS
+
+
+@pytest.mark.parametrize("default", ["escalate", "retry_same"])
+def test_choice_failure_returns_the_default_marked_as_fallback(default):
+    FakeClient.error = TypeSafeAPITimeoutError(10)
+    decision = ask_choice("s", "q?", OPTIONS, default=default)
+    assert decision == Decision(
+        value=default, confidence=None, fallback=True, model=None
+    )
+
+
+def test_choice_needs_at_least_two_options():
+    with pytest.raises(ValueError, match="at least two"):
+        ask_choice("s", "q?", {"only": "one"}, default="only")
+
+
+def test_choice_default_must_be_one_of_the_options():
+    # Our own bug, so it raises instead of falling back, and before any Jev call.
+    with pytest.raises(ValueError, match="not one of the options"):
+        ask_choice("s", "q?", OPTIONS, default="give_up")
+    assert FakeClient.last_call == {}
+
+
+def test_choice_log_has_the_result_but_not_the_state_text(caplog):
+    caplog.set_level(logging.INFO, logger=jev.logger.name)
+    secret = "PAGE TEXT THAT MUST NOT BE LOGGED"
+    ask_choice(secret, "What next?", OPTIONS, default="escalate")
+
+    (record,) = caplog.records
+    message = record.getMessage()
+    assert "choice=retry_different" in message
+    assert "confidence=0.800" in message
+    assert "'other': 0.2" in message
     assert f"state_chars={len(secret)}" in message
     assert secret not in message

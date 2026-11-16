@@ -9,6 +9,7 @@ import time
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from typesafe_sdk import (
+    Choice,
     Noul,
     RetryPolicy,
     Score,
@@ -32,8 +33,9 @@ _QUESTION_ID = "q"
 
 
 class Decision(BaseModel):
-    # bool for ask_boolean, float (the expected level) for ask_score.
-    value: bool | float
+    # bool for ask_boolean, float (the expected level) for ask_score, str (the name of
+    # the chosen option) for ask_choice.
+    value: bool | float | str
     confidence: float | None
     fallback: bool
     model: str | None
@@ -46,7 +48,7 @@ def _make_client() -> TypeSafeClient:
     )
 
 
-def _fallback(kind: str, question: str, default: bool | float, e: TypeSafeError):
+def _fallback(kind: str, question: str, default: bool | float | str, e: TypeSafeError):
     """Log a failed Jev call and return the caller's default, marked as a fallback."""
     # Narrower than the researcher's `except Exception`: the SDK raises only
     # TypeSafeError subclasses, so anything else is our own bug and should surface.
@@ -143,6 +145,54 @@ def ask_score(
     )
     return Decision(
         value=answer.score,
+        confidence=answer.confidence,
+        fallback=False,
+        model=response.model,
+    )
+
+
+def ask_choice(
+    state: str, question: str, options: dict[str, str], *, default: str
+) -> Decision:
+    """Ask Jev to pick the one option that fits `state` best.
+
+    `options` maps each option's name to a description of when it applies. The returned
+    value is the name of the chosen option. Confidence is Jev's own: high when one
+    option clearly stands out, low when the probability is spread over several.
+    `default` must be one of the options; it is returned (with fallback=True) if Jev
+    cannot be reached.
+    """
+    # Outside the try on purpose: both are our own bugs and should raise.
+    if len(options) < 2:
+        raise ValueError("A choice needs at least two options.")
+    if default not in options:
+        raise ValueError(f"default {default!r} is not one of the options.")
+
+    started = time.perf_counter()
+    try:
+        response = _make_client().system_one(
+            state=state,
+            questions={_QUESTION_ID: Choice(instructions=question, criteria=options)},
+        )
+        answer = response.choices[_QUESTION_ID]
+    except TypeSafeError as e:
+        return _fallback("choice", question, default, e)
+
+    # The probabilities show how close the runner-up was; they go in the log, rounded.
+    probabilities = {name: round(p, 2) for name, p in answer.probabilities.items()}
+    logger.info(
+        "jev choice question=%r choice=%s confidence=%.3f probabilities=%s "
+        "state_chars=%d model=%s elapsed=%.1fs",
+        question,
+        answer.choice,
+        answer.confidence,
+        probabilities,
+        len(state),
+        response.model,
+        time.perf_counter() - started,
+    )
+    return Decision(
+        value=answer.choice,
         confidence=answer.confidence,
         fallback=False,
         model=response.model,

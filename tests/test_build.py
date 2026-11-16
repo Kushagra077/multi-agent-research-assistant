@@ -47,7 +47,11 @@ def fakes(monkeypatch):
     monkeypatch.setattr(
         researcher_module, "get_researcher_llm", lambda: FakeResearcherLLM()
     )
-    monkeypatch.setattr(researcher_module, "search_web", lambda query: list(SOURCES))
+    monkeypatch.setattr(
+        researcher_module,
+        "search_web",
+        lambda query, exclude_domains=None: list(SOURCES),
+    )
 
 
 def test_question_goes_in_and_one_finding_per_subtask_comes_out():
@@ -66,7 +70,7 @@ def test_blank_question_is_rejected_before_any_work_happens():
 
 
 def test_one_failing_researcher_does_not_sink_the_run(monkeypatch):
-    def flaky_search(query):
+    def flaky_search(query, exclude_domains=None):
         if query == "question 1":
             raise RuntimeError("tavily is down")
         return list(SOURCES)
@@ -91,7 +95,9 @@ def test_every_researcher_failing_still_finishes_with_failed_findings():
 
 
 def test_no_search_results_gives_no_results_findings(monkeypatch):
-    monkeypatch.setattr(researcher_module, "search_web", lambda query: [])
+    monkeypatch.setattr(
+        researcher_module, "search_web", lambda query, exclude_domains=None: []
+    )
 
     result = build_graph().invoke({"question": "What is X?"})
 

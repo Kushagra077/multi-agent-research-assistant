@@ -23,6 +23,7 @@ from pathlib import Path
 from typesafe_sdk import TypeSafeAPIConnectionError
 
 from research_assistant.decisions import jev
+from research_assistant.graph.nodes import merge as merge_module
 from research_assistant.graph.nodes import planner as planner_module
 from research_assistant.graph.nodes import researcher as researcher_module
 from research_assistant.graph.nodes import writer as writer_module
@@ -83,6 +84,7 @@ class FakeWriterLLM:
 
 
 writer_module.get_writer_llm = lambda: FakeWriterLLM()
+merge_module.MIN_SOURCE_CHARS = 0  # the fake pages are a few words long
 
 if __name__ == "__main__":
     from research_assistant.main import main

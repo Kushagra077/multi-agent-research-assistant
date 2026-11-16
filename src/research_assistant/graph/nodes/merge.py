@@ -1,7 +1,7 @@
 # Join point after the parallel researchers. LangGraph already waits for every
 # researcher before this node runs; what merge adds are the two Jev checks:
-#   1. Source-quality gate (score): rate each source of a 'found' finding against its
-#      subtask and drop the weak ones.
+#   1. Source-quality gate: drop sources with too little text (a plain rule), then rate
+#      each remaining source against its subtask with Jev (score) and drop weak ones.
 #   2. Health check (boolean): does the answer actually address its subtask?
 # The result is appended to state["reviews"]. state["findings"] is left exactly as the
 # researchers produced it, so nothing is lost and a human can still see dropped sources.
@@ -36,6 +36,10 @@ SOURCE_LEVELS = [
     ),
     "Directly useful: clearly answers the question and comes from a credible source.",
 ]
+# A page with less text than this is dropped without asking Jev: there is too little
+# to judge or to write from (a real run kept a 400-character Instagram post). The
+# check is a plain rule, so it also saves a Jev call. Pages in real runs had 2,000+.
+MIN_SOURCE_CHARS = 300
 # A source scoring below this is dropped. 1.0 = "partly useful" or better stays.
 MIN_SOURCE_SCORE = 1.0
 # Used when Jev is unreachable: a gate outage must not throw research away.
@@ -65,6 +69,18 @@ def _review_finding(finding: Finding, question: str, attempt: int) -> Review:
     # One Jev call per source, one after another. Fine for 2 sources x 3 subtasks;
     # batching them into one request is the optimisation if this gets slow.
     for source in finding.sources:
+        if len(source.content) < MIN_SOURCE_CHARS:
+            # No Jev score exists for it, so the score is None (as when Jev is down),
+            # but this is not an outage, so used_fallback is left alone.
+            scores[source.url] = None
+            dropped.append(source.url)
+            logger.info(
+                "merge dropped source subtask_id=%s url=%s too_short chars=%d",
+                finding.subtask_id,
+                source.url,
+                len(source.content),
+            )
+            continue
         decision = ask_score(
             _source_text(question, source),
             SOURCE_QUESTION,

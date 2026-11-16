@@ -17,6 +17,7 @@ import pytest
 from typesafe_sdk import TypeSafeAPIConnectionError
 
 from research_assistant.decisions import jev
+from research_assistant.graph.nodes import merge as merge_module
 from research_assistant.graph.nodes import writer as writer_module
 
 
@@ -52,3 +53,12 @@ class _OfflineWriterLLM:
 @pytest.fixture(autouse=True)
 def _no_real_writer_calls(monkeypatch):
     monkeypatch.setattr(writer_module, "get_writer_llm", lambda: _OfflineWriterLLM())
+
+
+@pytest.fixture(autouse=True)
+def _short_fake_pages_are_allowed(monkeypatch):
+    """Test pages are a few words long, so the minimum-text rule is off by default.
+
+    test_merge.py turns it back on for the tests that are about it.
+    """
+    monkeypatch.setattr(merge_module, "MIN_SOURCE_CHARS", 0)

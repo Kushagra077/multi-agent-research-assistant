@@ -273,3 +273,39 @@ def test_a_retry_that_failed_gets_no_review_and_keeps_the_old_one_as_history():
     state["reviews"] = [_review(subtask, attempt=1)]
     assert merge(state) == {"reviews": []}
     assert FakeJev.calls == []
+
+
+# --- sources with too little text are dropped by a rule, without asking Jev -----
+
+
+def test_a_page_with_too_little_text_is_dropped_without_a_jev_call(monkeypatch):
+    monkeypatch.setattr(merge_module, "MIN_SOURCE_CHARS", 300)
+    thin = Source(url="https://instagram.com/p/1", title="Post", content="x" * 299)
+    full = Source(url="https://good.com", title="Good", content="x" * 300)
+    subtask = Subtask(description="What is X?")
+    (review,) = merge(_state(_found(subtask, thin, full), subtask=subtask))["reviews"]
+    assert review.dropped_urls == [thin.url]
+    assert review.kept_urls == [full.url]  # exactly 300 characters is enough
+    assert review.source_scores == {thin.url: None, full.url: 1.9}
+    # Jev was asked about the full page only (one score), then about the answer.
+    assert [kind for kind, _ in FakeJev.calls] == ["score", "noul"]
+    assert thin.url not in FakeJev.calls[0][1]
+
+
+def test_dropping_a_thin_page_is_not_reported_as_a_jev_outage(monkeypatch):
+    monkeypatch.setattr(merge_module, "MIN_SOURCE_CHARS", 300)
+    thin = Source(url="https://instagram.com/p/1", title="Post", content="x")
+    subtask = Subtask(description="What is X?")
+    (review,) = merge(_state(_found(subtask, thin), subtask=subtask))["reviews"]
+    assert review.used_fallback is False
+    assert review.addresses_subtask is False  # nothing credible is left
+    assert FakeJev.calls == []
+
+
+def test_the_log_says_a_page_was_dropped_for_being_too_short(monkeypatch, caplog):
+    monkeypatch.setattr(merge_module, "MIN_SOURCE_CHARS", 300)
+    thin = Source(url="https://instagram.com/p/1", title="Post", content="x" * 50)
+    subtask = Subtask(description="What is X?")
+    with caplog.at_level(logging.INFO, logger=merge_module.logger.name):
+        merge(_state(_found(subtask, thin), subtask=subtask))
+    assert "too_short chars=50" in caplog.text

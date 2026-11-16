@@ -103,9 +103,9 @@ def test_replay_adds_a_branch_and_keeps_the_old_checkpoints(finished_run):
     before = list(finished_run.get_state_history(CONFIG))
     finished_run.invoke(None, _before_researchers(finished_run).config)
     after = list(finished_run.get_state_history(CONFIG))
-    # 3 new checkpoints: the researcher step, merge, and the final one
-    assert len(before) == 6
-    assert len(after) == 9
+    # 4 new checkpoints: the researcher step, merge, decide, and the final one
+    assert len(before) == 7
+    assert len(after) == 11
     old_ids = {s.config["configurable"]["checkpoint_id"] for s in before}
     new_ids = {s.config["configurable"]["checkpoint_id"] for s in after}
     assert old_ids <= new_ids

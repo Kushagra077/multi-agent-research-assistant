@@ -3,6 +3,7 @@ from uuid import uuid4
 from research_assistant.main import print_summary
 from research_assistant.schemas.findings import Finding, Review, Source
 from research_assistant.schemas.plan import Plan, Subtask
+from research_assistant.schemas.retry import RetryDecision
 
 SOURCE = Source(url="https://a.com", title="Page A", content="Fact from A.")
 
@@ -94,3 +95,44 @@ def test_summary_without_reviews_prints_no_review_lines(capsys):
     print_summary(_result())  # no "reviews" key, as in a run saved before Phase 4
     out = capsys.readouterr().out
     assert "sources:" not in out
+
+
+def _decision(subtask_id, action="escalate", reason="cap"):
+    return RetryDecision(
+        subtask_id=subtask_id,
+        attempt=2,
+        action=action,
+        reason=reason,
+        confidence=None,
+        exclude_domains=[],
+    )
+
+
+def test_summary_flags_an_escalated_subtask_and_says_why(capsys):
+    result = _result()
+    second = result["plan"].subtasks[1]  # its finding is no_results: no review
+    result["decisions"] = [_decision(second.id, reason="cap")]
+    print_summary(result)
+    out = capsys.readouterr().out
+    assert "NEEDS A HUMAN: escalated (retry limit reached)" in out
+
+
+def test_summary_says_how_many_attempts_a_retried_subtask_took(capsys):
+    result = _result()
+    first = result["plan"].subtasks[0]
+    result["findings"].append(
+        Finding(subtask_id=first.id, status="found", answer="y", sources=[SOURCE])
+    )
+    print_summary(result)
+    assert "attempts: 2 (the newest is shown)" in capsys.readouterr().out
+
+
+def test_summary_stays_quiet_about_a_retry_that_was_chosen_but_is_not_an_escalation(
+    capsys,
+):
+    result = _result()
+    result["decisions"] = [
+        _decision(result["plan"].subtasks[0].id, action="retry_same", reason="jev")
+    ]
+    print_summary(result)
+    assert "NEEDS A HUMAN" not in capsys.readouterr().out

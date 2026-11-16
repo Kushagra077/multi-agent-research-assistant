@@ -2,6 +2,8 @@ import argparse
 import os
 import uuid
 
+from research_assistant.schemas.findings import attempts_by_subtask
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Multi-agent research assistant")
@@ -33,6 +35,11 @@ def print_summary(result: dict) -> None:
     findings_by_id = {f.subtask_id: f for f in result["findings"]}
     # A run saved before the Jev checks existed has no "reviews" key.
     reviews_by_id = {r.subtask_id: r for r in result.get("reviews", [])}
+    # Later decisions come later in the list, so the last one per subtask wins.
+    decisions_by_id = {d.subtask_id: d for d in result.get("decisions", [])}
+    # findings_by_id above holds the newest finding per subtask; this says how many
+    # attempts it took.
+    attempts = attempts_by_subtask(result["findings"])
 
     print("\nPlan:")
     for number, subtask in enumerate(subtasks, start=1):
@@ -45,6 +52,8 @@ def print_summary(result: dict) -> None:
             print(f"  [missing] {subtask.description}")
             continue
         print(f"  [{finding.status}] {subtask.description}")
+        if attempts[subtask.id] > 1:
+            print(f"      attempts: {attempts[subtask.id]} (the newest is shown)")
         if finding.status == "failed":
             print(f"      error: {finding.error}")
         review = reviews_by_id.get(subtask.id)
@@ -60,6 +69,14 @@ def print_summary(result: dict) -> None:
                 print(f"      {verdict} {shown:>4}  {url}")
             if review.used_fallback:
                 print("      note: Jev was unreachable, defaults were used")
+        decision = decisions_by_id.get(subtask.id)
+        if decision is not None and decision.action == "escalate":
+            why = {
+                "cap": "retry limit reached",
+                "fallback": "Jev was unreachable",
+                "jev": "Jev judged a retry would not help",
+            }[decision.reason]
+            print(f"      NEEDS A HUMAN: escalated ({why})")
 
 
 def main() -> None:

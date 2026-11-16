@@ -1,5 +1,5 @@
 # GraphState: the single shared object passed between every node.
-# Needs so far: question, plan, findings, reviews.
+# Needs so far: question, plan, findings, reviews, decisions.
 # ResearcherInput: what each parallel researcher receives via Send (not the full state).
 
 from operator import add
@@ -7,6 +7,7 @@ from typing import Annotated, NotRequired, TypedDict
 
 from research_assistant.schemas.findings import Finding, Review
 from research_assistant.schemas.plan import Plan, Subtask
+from research_assistant.schemas.retry import RetryDecision
 
 
 class GraphState(TypedDict):
@@ -18,6 +19,8 @@ class GraphState(TypedDict):
     # stays as the researchers produced it; reviews says what the Jev checks decided.
     # A retry adds a new review and keeps the old one, so the history is not lost.
     reviews: NotRequired[Annotated[list[Review], add]]
+    # One RetryDecision per (subtask, attempt) that needed one, appended by decide.
+    decisions: NotRequired[Annotated[list[RetryDecision], add]]
 
 
 class ResearcherInput(TypedDict):

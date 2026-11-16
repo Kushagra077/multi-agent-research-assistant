@@ -70,10 +70,10 @@ def _oldest_first(graph, config):
 # --- how many checkpoints, and where ---------------------------------------
 
 
-def test_a_full_run_saves_seven_checkpoints_numbered_minus_one_to_five():
+def test_a_full_run_saves_nine_checkpoints_numbered_minus_one_to_seven():
     graph, config, _ = _run()
     steps = [s.metadata["step"] for s in _oldest_first(graph, config)]
-    assert steps == [-1, 0, 1, 2, 3, 4, 5]
+    assert steps == [-1, 0, 1, 2, 3, 4, 5, 6, 7]
 
 
 def test_each_checkpoint_says_which_nodes_run_next():
@@ -86,6 +86,8 @@ def test_each_checkpoint_says_which_nodes_run_next():
         ("researcher",) * SUBTASK_COUNT,
         ("merge",),
         ("decide",),
+        ("writer",),
+        ("ship_check",),
         (),
     ]
 
@@ -102,7 +104,7 @@ def test_all_parallel_researchers_share_one_checkpoint():
 def test_the_first_checkpoint_is_the_input_and_the_rest_come_from_the_loop():
     graph, config, _ = _run()
     sources = [s.metadata["source"] for s in _oldest_first(graph, config)]
-    assert sources == ["input"] + ["loop"] * 6
+    assert sources == ["input"] + ["loop"] * 8
 
 
 # --- the saved state is the real state -------------------------------------
@@ -146,7 +148,7 @@ def test_two_thread_ids_keep_separate_histories():
     graph.invoke({"question": "second"}, _config("b"))
     assert graph.get_state(_config("a")).values["question"] == "first"
     assert graph.get_state(_config("b")).values["question"] == "second"
-    assert len(list(graph.get_state_history(_config("a")))) == 7
+    assert len(list(graph.get_state_history(_config("a")))) == 9
 
 
 def test_an_unknown_thread_has_no_saved_state():
@@ -186,7 +188,7 @@ def test_state_and_history_survive_closing_and_reopening_the_database(tmp_path):
     assert saved.values["question"] == "What is X?"
     assert saved.values["plan"] == result["plan"]
     assert saved.values["findings"] == result["findings"]
-    assert len(history) == 7
+    assert len(history) == 9
 
 
 def test_models_come_back_as_models_from_the_database_file(tmp_path):

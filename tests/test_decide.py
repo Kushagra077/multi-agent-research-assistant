@@ -339,6 +339,10 @@ def test_a_rejected_first_attempt_is_retried_skipping_the_rejected_sites(graph):
     # Only the first attempt needed a decision, and nothing was left unresolved.
     (decision,) = result["decisions"]
     assert (decision.attempt, decision.action) == (1, "retry_different")
+    # The report is written from the retry's answer, and Jev OKs it.
+    assert result["draft"].answered == [result["plan"].subtasks[0].id]
+    assert result["draft"].unanswered == []
+    assert result["ship"].ready is True
 
 
 def test_a_subtask_that_never_recovers_stops_at_the_limit_and_escalates(graph):
@@ -348,6 +352,11 @@ def test_a_subtask_that_never_recovers_stops_at_the_limit_and_escalates(graph):
     assert len(FakeSearch.calls) == MAX_ATTEMPTS
     actions = [(d.attempt, d.action, d.reason) for d in result["decisions"]]
     assert actions == [(1, "retry_different", "jev"), (2, "escalate", "cap")]
+    # The report says so honestly, and is not offered as ready.
+    assert result["draft"].unanswered == [result["plan"].subtasks[0].id]
+    assert "## Could not be answered" in result["draft"].text
+    assert result["ship"].ready is False
+    assert result["ship"].reason == "unanswered"
 
 
 def test_when_everything_passes_the_graph_ends_without_a_decision(graph):

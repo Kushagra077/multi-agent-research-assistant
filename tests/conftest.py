@@ -11,10 +11,13 @@ import os
 os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
 
 
+from types import SimpleNamespace
+
 import pytest
 from typesafe_sdk import TypeSafeAPIConnectionError
 
 from research_assistant.decisions import jev
+from research_assistant.graph.nodes import writer as writer_module
 
 
 class _OfflineJevClient:
@@ -34,3 +37,18 @@ class _OfflineJevClient:
 @pytest.fixture(autouse=True)
 def _no_real_jev_calls(monkeypatch):
     monkeypatch.setattr(jev, "TypeSafeClient", _OfflineJevClient)
+
+
+class _OfflineWriterLLM:
+    """Stands in for the Groq writer, so a graph test never reaches the network.
+
+    Tests that care about the report (test_writer.py) replace this with their own fake.
+    """
+
+    def invoke(self, messages):
+        return SimpleNamespace(content="A fake report.")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_writer_calls(monkeypatch):
+    monkeypatch.setattr(writer_module, "get_writer_llm", lambda: _OfflineWriterLLM())

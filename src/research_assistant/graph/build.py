@@ -1,6 +1,6 @@
 # Assembles the StateGraph and compiles it.
 # intake -> planner -> researchers (parallel, one per subtask, via Send) -> merge -> decide
-# decide -> researchers again for subtasks that need a retry, otherwise END
+# decide -> researchers again for subtasks that need a retry, otherwise writer -> ship_check -> END
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -12,6 +12,8 @@ from research_assistant.graph.nodes.intake import intake
 from research_assistant.graph.nodes.merge import merge
 from research_assistant.graph.nodes.planner import planner
 from research_assistant.graph.nodes.researcher import researcher
+from research_assistant.graph.nodes.ship_check import ship_check
+from research_assistant.graph.nodes.writer import writer
 from research_assistant.schemas.findings import attempts_by_subtask
 from research_assistant.state import GraphState
 
@@ -35,7 +37,7 @@ def retry_dispatch(state: GraphState) -> list[Send] | str:
         if decision.exclude_domains:
             payload["exclude_domains"] = decision.exclude_domains
         sends.append(Send("researcher", payload))
-    return sends or END
+    return sends or "writer"
 
 
 # The caller chooses the checkpointer (InMemorySaver now, SqliteSaver later).
@@ -48,12 +50,18 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStat
     graph_builder.add_node("researcher", researcher)
     graph_builder.add_node("merge", merge)
     graph_builder.add_node("decide", decide)
+    graph_builder.add_node("writer", writer)
+    graph_builder.add_node("ship_check", ship_check)
 
     graph_builder.add_edge(START, "intake")
     graph_builder.add_edge("intake", "planner")
     graph_builder.add_conditional_edges("planner", dispatch, ["researcher"])
     graph_builder.add_edge("researcher", "merge")
     graph_builder.add_edge("merge", "decide")
-    graph_builder.add_conditional_edges("decide", retry_dispatch, ["researcher", END])
+    graph_builder.add_conditional_edges(
+        "decide", retry_dispatch, ["researcher", "writer"]
+    )
+    graph_builder.add_edge("writer", "ship_check")
+    graph_builder.add_edge("ship_check", END)
 
     return graph_builder.compile(checkpointer=checkpointer)

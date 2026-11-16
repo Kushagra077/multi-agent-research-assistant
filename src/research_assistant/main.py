@@ -78,6 +78,20 @@ def print_summary(result: dict) -> None:
             }[decision.reason]
             print(f"      NEEDS A HUMAN: escalated ({why})")
 
+    draft = result.get("draft")
+    if draft is not None:
+        print("\nReport draft:\n")
+        print(draft.text)
+    ship = result.get("ship")
+    if ship is not None:
+        verdict = "ready for review" if ship.ready else "NOT ready"
+        why = {
+            "jev": "Jev's verdict",
+            "unanswered": "a subtask has no usable answer",
+            "fallback": "Jev was unreachable, so the safe default was used",
+        }[ship.reason]
+        print(f"\nShip check: {verdict} ({why})")
+
 
 def main() -> None:
     # langgraph reads LANGGRAPH_STRICT_MSGPACK when it is first imported, so the flag

@@ -3,6 +3,7 @@ from uuid import uuid4
 from research_assistant.main import print_summary
 from research_assistant.schemas.findings import Finding, Review, Source
 from research_assistant.schemas.plan import Plan, Subtask
+from research_assistant.schemas.report import Draft, ShipVerdict
 from research_assistant.schemas.retry import RetryDecision
 
 SOURCE = Source(url="https://a.com", title="Page A", content="Fact from A.")
@@ -136,3 +137,30 @@ def test_summary_stays_quiet_about_a_retry_that_was_chosen_but_is_not_an_escalat
     ]
     print_summary(result)
     assert "NEEDS A HUMAN" not in capsys.readouterr().out
+
+
+def test_summary_prints_the_report_and_the_ship_verdict(capsys):
+    result = _result()
+    result["draft"] = Draft(text="The report body.", answered=[], unanswered=[])
+    result["ship"] = ShipVerdict(ready=True, confidence=0.9, reason="jev")
+    print_summary(result)
+    out = capsys.readouterr().out
+    assert "Report draft:" in out
+    assert "The report body." in out
+    assert "Ship check: ready for review (Jev's verdict)" in out
+
+
+def test_summary_says_why_a_draft_is_not_ready(capsys):
+    result = _result()
+    result["draft"] = Draft(text="x", answered=[], unanswered=[])
+    result["ship"] = ShipVerdict(ready=False, confidence=None, reason="unanswered")
+    print_summary(result)
+    out = capsys.readouterr().out
+    assert "Ship check: NOT ready (a subtask has no usable answer)" in out
+
+
+def test_summary_without_a_draft_prints_no_report_section(capsys):
+    print_summary(_result())
+    out = capsys.readouterr().out
+    assert "Report draft" not in out
+    assert "Ship check" not in out

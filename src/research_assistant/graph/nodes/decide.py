@@ -55,10 +55,15 @@ ANSWER_CHARS = 600
 
 
 def _situation(
-    subtask: Subtask, finding: Finding, review: Review | None, attempt: int
+    original: str,
+    subtask: Subtask,
+    finding: Finding,
+    review: Review | None,
+    attempt: int,
 ) -> str:
     """The text Jev judges: the subtask, how the attempt went, what the gate decided."""
     lines = [
+        f"Original research question: {original}",
         f"Subtask: {subtask.description}",
         f"Attempt {attempt} of at most {MAX_ATTEMPTS}.",
         f"Outcome of this attempt: {finding.status}.",
@@ -90,6 +95,7 @@ def _rejected_domains(reviews: list[Review]) -> list[str]:
 
 
 def _decide_one(
+    original: str,
     subtask: Subtask,
     finding: Finding,
     attempt: int,
@@ -102,7 +108,7 @@ def _decide_one(
         action, reason, confidence = "escalate", "cap", None
     else:
         decision = ask_choice(
-            _situation(subtask, finding, review, attempt),
+            _situation(original, subtask, finding, review, attempt),
             RETRY_QUESTION,
             RETRY_OPTIONS,
             default=DEFAULT_ACTION,
@@ -153,7 +159,9 @@ def decide(state: GraphState) -> dict:
             continue
         if (subtask.id, attempt) in decided:
             continue
-        decisions.append(_decide_one(subtask, finding, attempt, reviews))
+        decisions.append(
+            _decide_one(state["question"], subtask, finding, attempt, reviews)
+        )
 
     logger.info("decide decisions=%d", len(decisions))
     return {"decisions": decisions}

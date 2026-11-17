@@ -380,3 +380,15 @@ def test_retry_same_searches_again_with_nothing_excluded(graph):
     FakeSearch.script = [[SHOP], [GOOD]]
     _run(graph)
     assert [exclude for _, exclude in FakeSearch.calls] == [[], []]
+
+
+def test_the_retry_decision_also_shows_jev_the_original_question():
+    subtask = Subtask(description="What is X?")
+    state = _state(
+        subtask, [_found(subtask, SHOP)], [_review(subtask, dropped=[SHOP.url])]
+    )
+    state["question"] = "How do adults learn guitar?"
+    decide(state)
+    (text,) = _choice_calls()
+    assert "Original research question: How do adults learn guitar?" in text
+    assert "Subtask: What is X?" in text

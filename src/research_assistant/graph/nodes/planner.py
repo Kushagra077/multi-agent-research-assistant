@@ -21,6 +21,10 @@ Rules:
 - Each subtask must be a specific, self-contained question that can be answered \
 with web search. Name the key entities, time frames and constraints from the \
 original question; do not rely on the other subtasks for context.
+- Every subtask must name the main subject of the original question (for example the \
+instrument, product, technology or field), even if that repeats words. "What daily \
+practice routine suits adult beginners?" is too vague; "What daily practice routine \
+suits adult beginners learning guitar?" is right.
 - Subtasks must not overlap, and together they must cover the whole question.
 - Do not answer the question yourself.
 - Do not include steps like "summarize", "compare findings" or "write the report". \

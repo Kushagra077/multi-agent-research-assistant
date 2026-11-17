@@ -75,7 +75,11 @@ guitar?" (planner faked with a fixed plan because Gemini was returning 504s; Tav
 and Jev were real). Full notes: [full pipeline run](docs/evidence/2026-11-16-full-pipeline-real-run.md)
 and [retry loop run](docs/evidence/2026-11-16-retry-loop-real-run.md).
 
-- **Jev calls:** 13 in the run, 0.5 to 1.8 s each, mean about 0.7 s.
+- **Jev speed:** one decision takes about half a second. Over 42 calls made by the Docker
+  stack during real runs through the review page (24 source scores, 18 yes/no checks):
+  median **0.50 s**, 95th percentile 0.60 s, slowest 0.7 s. The earlier notebook run (13
+  calls) had a mean of about 0.7 s and one slow call of 1.8 s. These are measured from the
+  log lines, one request at a time; no LLM was timed for comparison.
 - **A bad source filtered:** for one subtask, Tavily returned two quora.com threads about
   Python and drawing. Jev scored both **0.01** (confidence 0.98) and the answer check said
   no.

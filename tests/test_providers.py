@@ -91,3 +91,11 @@ def test_a_plan_with_no_subtasks_is_an_error_not_an_empty_plan():
 def test_the_groq_planner_only_produces_a_plan():
     with pytest.raises(ValueError, match="only produces a Plan"):
         _GroqPlanner(FakeChatModel()).with_structured_output(PlanDraft)
+
+
+def test_the_writer_gets_an_explicit_output_budget_and_low_reasoning_effort(fakes):
+    providers.get_writer_llm()
+    assert fakes[0]["model_provider"] == "groq"
+    assert fakes[0]["max_tokens"] == providers.WRITER_MAX_TOKENS
+    assert fakes[0]["reasoning_effort"] == providers.WRITER_REASONING_EFFORT
+    assert fakes[0]["timeout"] == providers.WRITER_TIMEOUT_SECONDS

@@ -32,6 +32,11 @@ RESEARCHER_MAX_RETRIES = 1
 # A whole report is longer than one researcher answer, so it gets more time.
 WRITER_TIMEOUT_SECONDS = 60
 WRITER_MAX_RETRIES = 1
+# gpt-oss is a reasoning model: its hidden reasoning counts against the output limit, so
+# a redraft (longer prompt: findings + earlier draft + feedback) can run out before the
+# report ends. A generous explicit limit, and low reasoning effort, leave room for it.
+WRITER_MAX_TOKENS = 4096
+WRITER_REASONING_EFFORT = "low"
 
 
 class _GroqPlanner:
@@ -98,4 +103,6 @@ def get_writer_llm() -> BaseChatModel:
         temperature=0.0,
         timeout=WRITER_TIMEOUT_SECONDS,
         max_retries=WRITER_MAX_RETRIES,
+        max_tokens=WRITER_MAX_TOKENS,
+        reasoning_effort=WRITER_REASONING_EFFORT,
     )

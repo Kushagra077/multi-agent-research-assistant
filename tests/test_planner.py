@@ -48,3 +48,9 @@ def test_planner_failure_is_logged_with_traceback_and_still_raised(caplog):
     [record] = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert record.exc_info is not None
     assert "groq timed out" in caplog.text
+
+
+def test_the_planner_prompt_requires_every_subtask_to_name_the_main_subject():
+    # A real run's third subtask lost the word "guitar", and a gym-exercise page then
+    # answered it: the prompt must forbid that.
+    assert "name the main subject" in planner_module.PLANNER_SYSTEM_PROMPT

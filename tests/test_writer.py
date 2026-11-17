@@ -8,6 +8,7 @@ from research_assistant.graph.nodes import writer as writer_module
 from research_assistant.graph.nodes.writer import (
     NO_ANSWERS_BODY,
     WRITER_SYSTEM_PROMPT,
+    WriterOutputCutOff,
     writer,
 )
 from research_assistant.schemas.findings import Finding, Review, Source
@@ -191,3 +192,51 @@ def test_the_log_has_counts_and_sizes_but_not_the_report(caplog):
     assert "writer done chars=" in caplog.text
     assert "SECRET ANSWER" not in caplog.text
     assert "The body of the report." not in caplog.text
+
+
+# --- a reply that was cut off at the output limit is never turned into a report ---
+
+
+def _reply(finish_reason, tokens=1234):
+    return SimpleNamespace(
+        content="A report that stops mid-sen",
+        response_metadata={
+            "finish_reason": finish_reason,
+            "token_usage": {"completion_tokens": tokens},
+        },
+    )
+
+
+def _one_subtask_state():
+    x = Subtask(description="What is X?")
+    return _state([x], [_found(x, "X is 1.", GOOD)], [_review(x, kept=[GOOD.url])])
+
+
+def test_a_reply_cut_off_at_the_output_limit_is_an_error_not_a_report(caplog):
+    FakeWriterLLM.reply = _reply("length")
+    with (
+        caplog.at_level(logging.INFO, logger=writer_module.logger.name),
+        pytest.raises(WriterOutputCutOff, match="cut off.*completion_tokens=1234"),
+    ):
+        writer(_one_subtask_state())
+    assert "writer failed" in caplog.text
+
+
+def test_a_reply_that_finished_normally_is_accepted_and_the_log_says_why_it_stopped(
+    caplog,
+):
+    FakeWriterLLM.reply = _reply("stop", tokens=321)
+    with caplog.at_level(logging.INFO, logger=writer_module.logger.name):
+        draft = writer(_one_subtask_state())["draft"]
+    assert draft.text.startswith("A report that stops mid-sen")
+    assert "finish_reason=stop completion_tokens=321" in caplog.text
+
+
+def test_a_reply_with_no_metadata_is_accepted():
+    # The fakes of other tests (and any provider that sends none) carry no metadata.
+    draft = writer(_one_subtask_state())["draft"]
+    assert draft.text.startswith("The body of the report.")
+
+
+def test_the_writer_is_told_not_to_fill_a_gap_with_its_own_knowledge():
+    assert "do not fill the gap" in WRITER_SYSTEM_PROMPT

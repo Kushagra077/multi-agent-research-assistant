@@ -23,7 +23,13 @@ from research_assistant.state import GraphState
 
 logger = logging.getLogger(__name__)
 
-SOURCE_QUESTION = "How useful is this web page for answering the research question?"
+# Jev is shown both the original question and the subtask: a page can answer a subtask
+# as worded and still be off-topic for the whole question (a real run: a gym-exercise
+# page for a guitar subtask whose text had lost the word "guitar").
+SOURCE_QUESTION = (
+    "How useful is this web page for answering the subtask, as part of the original "
+    "research question? A page about a different subject is not useful."
+)
 # Written worst to best: the position in the list is the level number (0, 1, 2).
 SOURCE_LEVELS = [
     (
@@ -46,21 +52,25 @@ MIN_SOURCE_SCORE = 1.0
 SOURCE_DEFAULT_SCORE = 2.0
 
 ANSWER_QUESTION = (
-    "Does the answer directly address the research question? Answer no if it only "
+    "Does the answer directly address the subtask, about the same subject as the "
+    "original research question? Answer no if it is about a different subject, only "
     "covers the general topic, or says it could not find the information."
 )
 # Used when Jev is unreachable: let the run continue; used_fallback records it.
 ANSWER_DEFAULT = True
 
 
-def _source_text(question: str, source: Source) -> str:
+def _source_text(original: str, question: str, source: Source) -> str:
     return (
-        f"Research question: {question}\n\n"
+        f"Original research question: {original}\n"
+        f"Subtask: {question}\n\n"
         f"Web page title: {source.title}\nURL: {source.url}\n\n{source.content}"
     )
 
 
-def _review_finding(finding: Finding, question: str, attempt: int) -> Review:
+def _review_finding(
+    finding: Finding, original: str, question: str, attempt: int
+) -> Review:
     kept: list[str] = []
     dropped: list[str] = []
     scores: dict[str, float | None] = {}
@@ -82,7 +92,7 @@ def _review_finding(finding: Finding, question: str, attempt: int) -> Review:
             )
             continue
         decision = ask_score(
-            _source_text(question, source),
+            _source_text(original, question, source),
             SOURCE_QUESTION,
             SOURCE_LEVELS,
             default=SOURCE_DEFAULT_SCORE,
@@ -103,7 +113,8 @@ def _review_finding(finding: Finding, question: str, attempt: int) -> Review:
 
     if kept:
         decision = ask_boolean(
-            f"Research question: {question}\n\nAnswer:\n{finding.answer}",
+            f"Original research question: {original}\nSubtask: {question}\n\n"
+            f"Answer:\n{finding.answer}",
             ANSWER_QUESTION,
             default=ANSWER_DEFAULT,
         )
@@ -164,5 +175,7 @@ def merge(state: GraphState) -> dict:
         attempt = attempts[subtask_id]
         if (subtask_id, attempt) in already_reviewed:
             continue
-        reviews.append(_review_finding(finding, questions[subtask_id], attempt))
+        reviews.append(
+            _review_finding(finding, state["question"], questions[subtask_id], attempt)
+        )
     return {"reviews": reviews}

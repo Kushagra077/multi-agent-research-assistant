@@ -309,3 +309,25 @@ def test_the_log_says_a_page_was_dropped_for_being_too_short(monkeypatch, caplog
     with caplog.at_level(logging.INFO, logger=merge_module.logger.name):
         merge(_state(_found(subtask, thin), subtask=subtask))
     assert "too_short chars=50" in caplog.text
+
+
+# --- Jev judges against the original question as well as the subtask --------------
+
+
+def test_jev_is_shown_the_original_question_with_every_page_and_answer():
+    subtask = Subtask(description="Daily routine for adult beginners")
+    state = _state(_found(subtask, GOOD), subtask=subtask)
+    state["question"] = "How do adults learn guitar?"
+    merge(state)
+    (_, page_text), (_, answer_text) = FakeJev.calls
+    for text in (page_text, answer_text):
+        assert "Original research question: How do adults learn guitar?" in text
+        assert "Subtask: Daily routine for adult beginners" in text
+    assert GOOD.content in page_text
+    assert "X is Y." in answer_text
+
+
+def test_the_questions_put_to_jev_name_the_subject_and_reject_other_subjects():
+    assert "original" in merge_module.SOURCE_QUESTION
+    assert "different subject" in merge_module.SOURCE_QUESTION
+    assert "different subject" in merge_module.ANSWER_QUESTION

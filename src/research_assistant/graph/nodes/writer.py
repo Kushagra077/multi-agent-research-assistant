@@ -26,6 +26,9 @@ Rules:
 not guess.
 - Keep concrete details such as numbers, dates, names and units.
 - If findings disagree, say so and state what each one claims.
+- If a finding is about a different subject than its subtask, or says the sources do \
+not cover it, say so in one sentence and do not fill the gap with your own knowledge \
+or advice.
 - Start with a short summary of two or three sentences, then write one short section \
 per finding with a heading.
 - Remove references such as "(Source 2)": the sources are listed separately.
@@ -35,6 +38,10 @@ are added separately.
 facts that appear in the findings."""
 
 NO_ANSWERS_BODY = "No subtask produced a usable answer, so no report could be written."
+
+
+class WriterOutputCutOff(RuntimeError):
+    """The model stopped because it hit its output limit, not because it finished."""
 
 
 def _usable(state: GraphState) -> tuple[list, list]:
@@ -82,6 +89,7 @@ def _open_questions_section(unanswered: list) -> str:
 
 
 def writer(state: GraphState) -> dict:
+    finish_reason = completion_tokens = None
     answered, unanswered = _usable(state)
     logger.info(
         "writer start answered=%d unanswered=%d", len(answered), len(unanswered)
@@ -106,6 +114,18 @@ def writer(state: GraphState) -> dict:
                 [SystemMessage(WRITER_SYSTEM_PROMPT), HumanMessage(human_text)]
             )
             body = str(reply.content).strip()
+            metadata = getattr(reply, "response_metadata", None) or {}
+            finish_reason = metadata.get("finish_reason")
+            completion_tokens = (metadata.get("token_usage") or {}).get(
+                "completion_tokens"
+            )
+            if finish_reason == "length":
+                # The model ran out of output budget part-way: a report that stops
+                # mid-sentence, or silently misses a section, must not reach a reviewer.
+                raise WriterOutputCutOff(
+                    f"The writer's reply was cut off at the output limit "
+                    f"(completion_tokens={completion_tokens}); no report was produced."
+                )
         except Exception:
             # Like the planner, and unlike the researcher: a missing report is the end
             # of the run, not a result. Log where it stopped; the checkpoint lets a
@@ -126,10 +146,13 @@ def writer(state: GraphState) -> dict:
     )
     # Lengths only: the draft holds research text and stays out of the log.
     logger.info(
-        "writer done chars=%d answered=%d unanswered=%d elapsed=%.1fs",
+        "writer done chars=%d answered=%d unanswered=%d finish_reason=%s "
+        "completion_tokens=%s elapsed=%.1fs",
         len(draft.text),
         len(draft.answered),
         len(draft.unanswered),
+        finish_reason,
+        completion_tokens,
         time.perf_counter() - started,
     )
     return {"draft": draft}

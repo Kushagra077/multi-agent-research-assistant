@@ -48,6 +48,11 @@ flowchart TD
 
 ## What it looks like
 
+**Demo video:** [docs/demo/walkthrough.mp4](docs/demo/walkthrough.mp4) (98 s, no sound). It is
+a captioned slideshow of screenshots from one real run: Jev scoring sources, a rejection with
+feedback, a redraft, an API restart while the run waits, and the approval. The plan is in
+demo mode, as the page's banner says.
+
 The review page, on an approved run: each subtask's answer, its sources with Jev's score and
 whether the source was kept, Jev's ship verdict, and the delivered report (the planner is in
 demo mode here, which the page says in the blue banner).

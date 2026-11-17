@@ -77,6 +77,11 @@ class FakeApi:
         FakeApi.calls.append(("resume", thread_id))
         return {}
 
+    health_report: ClassVar[dict | None] = {"ok": True, "planner_provider": "groq"}
+
+    def health(self):
+        return FakeApi.health_report
+
     def start(self, question):
         FakeApi.calls.append(("start", question))
         return {"thread_id": "new-run"}
@@ -87,6 +92,7 @@ def fake_api(monkeypatch):
     FakeApi.run = _run()
     FakeApi.calls = []
     FakeApi.error = None
+    FakeApi.health_report = {"ok": True, "planner_provider": "groq"}
     monkeypatch.setattr(ui_client, "ApiClient", FakeApi)
 
 
@@ -211,3 +217,14 @@ def test_a_failed_run_shows_the_error_and_a_resume_button():
     button.click()
     app.run()
     assert FakeApi.calls == [("resume", "t1")]
+
+
+def test_demo_mode_is_announced_on_the_page():
+    FakeApi.health_report = {"ok": True, "planner_provider": "fixed"}
+    assert any(i.value.startswith("Demo mode: the plan is fixed") for i in _app().info)
+
+
+def test_no_demo_banner_with_a_real_planner_or_an_unreachable_api():
+    for report in ({"ok": True, "planner_provider": "groq"}, None):
+        FakeApi.health_report = report
+        assert not any("Demo mode" in i.value for i in _app().info)

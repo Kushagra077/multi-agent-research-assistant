@@ -136,6 +136,15 @@ docker compose up --build    # API on :8000, review page on :8501
 Both ports are bound to `127.0.0.1`. **The API has no login and spends your API keys, so do
 not expose it.**
 
+### Demo mode
+
+`PLANNER_PROVIDER=fixed` in `.env` replaces only the planner with a fixed three-subtask
+guitar plan (or your own in `DEMO_PLAN`, subtasks separated by `|`), so the questions asked
+are the same each time. Searching, the Jev checks, the writer and the review are all real,
+and the review page shows a banner saying the plan is fixed. The search results are not
+fixed: the same plan returned two off-topic quora.com pages on one day and none the next.
+The default is a model-written plan.
+
 ### API
 
 | Call | Does |
@@ -144,7 +153,7 @@ not expose it.**
 | `GET /runs/{id}` | status, plan, sources with scores, Jev's choices, report, ship verdict |
 | `POST /runs/{id}/review` `{action, feedback?, text?}` | `approve`, `reject` (needs feedback), `edit` (needs text) |
 | `POST /runs/{id}/resume` | continue a `failed` or `interrupted` run |
-| `GET /health` | liveness |
+| `GET /health` | liveness, and which planner is in use |
 
 Statuses: `running`, `awaiting_review`, `done`, `failed`, `interrupted`. Interactive docs
 are at `/docs`.

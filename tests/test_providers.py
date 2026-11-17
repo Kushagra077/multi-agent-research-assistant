@@ -7,7 +7,12 @@ import pytest
 from pydantic import ValidationError
 
 from research_assistant.llm import providers
-from research_assistant.llm.providers import _GroqPlanner, get_planner_llm
+from research_assistant.llm.providers import (
+    DEMO_SUBTASKS,
+    _GroqPlanner,
+    get_planner_llm,
+    planner_provider_name,
+)
 from research_assistant.schemas.plan import Plan, PlanDraft
 
 
@@ -59,7 +64,7 @@ def test_gemini_is_one_setting_away(fakes, monkeypatch):
 
 def test_an_unknown_provider_is_refused_with_the_valid_choices(monkeypatch):
     monkeypatch.setenv("PLANNER_PROVIDER", "openai")
-    with pytest.raises(ValueError, match="'groq' or 'gemini'"):
+    with pytest.raises(ValueError, match="'groq', 'gemini' or 'fixed'"):
         get_planner_llm()
 
 
@@ -99,3 +104,47 @@ def test_the_writer_gets_an_explicit_output_budget_and_low_reasoning_effort(fake
     assert fakes[0]["max_tokens"] == providers.WRITER_MAX_TOKENS
     assert fakes[0]["reasoning_effort"] == providers.WRITER_REASONING_EFFORT
     assert fakes[0]["timeout"] == providers.WRITER_TIMEOUT_SECONDS
+
+
+# --- the labelled demo mode ------------------------------------------------------
+
+
+def test_the_fixed_planner_returns_the_demo_plan_and_builds_no_llm_client(
+    fakes, monkeypatch
+):
+    monkeypatch.setenv("PLANNER_PROVIDER", "fixed")
+    plan = get_planner_llm().with_structured_output(Plan).invoke(["ignored"])
+    assert [s.description for s in plan.subtasks] == list(DEMO_SUBTASKS)
+    assert fakes == []  # init_chat_model was never called: no key, no network
+
+
+def test_every_plan_from_the_fixed_planner_has_new_ids(monkeypatch):
+    monkeypatch.setenv("PLANNER_PROVIDER", "fixed")
+    planner = get_planner_llm()
+    first = planner.invoke([])
+    second = planner.invoke([])
+    assert {s.id for s in first.subtasks}.isdisjoint({s.id for s in second.subtasks})
+
+
+def test_the_demo_plan_can_be_replaced_with_demo_plan(monkeypatch):
+    monkeypatch.setenv("PLANNER_PROVIDER", "fixed")
+    monkeypatch.setenv("DEMO_PLAN", " What is X? | What is Y?||  ")
+    plan = get_planner_llm().invoke([])
+    assert [s.description for s in plan.subtasks] == ["What is X?", "What is Y?"]
+
+
+def test_the_fixed_planner_only_produces_a_plan(monkeypatch):
+    monkeypatch.setenv("PLANNER_PROVIDER", "fixed")
+    with pytest.raises(ValueError, match="only produces a Plan"):
+        get_planner_llm().with_structured_output(PlanDraft)
+
+
+def test_the_provider_name_is_normalised(monkeypatch):
+    assert planner_provider_name() == "groq"
+    monkeypatch.setenv("PLANNER_PROVIDER", " Fixed ")
+    assert planner_provider_name() == "fixed"
+
+
+def test_the_demo_plan_names_the_subject_in_every_subtask():
+    # The rule of the planner prompt, applied to our own fixed plan.
+    assert all("guitar" in subtask for subtask in DEMO_SUBTASKS)

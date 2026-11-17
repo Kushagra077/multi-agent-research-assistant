@@ -96,7 +96,13 @@ def _client(tmp_path, name="api.db"):
 
 def test_health(tmp_path):
     with _client(tmp_path) as client:
-        assert client.get("/health").json() == {"ok": True}
+        assert client.get("/health").json() == {"ok": True, "planner_provider": "groq"}
+
+
+def test_health_says_when_the_planner_is_the_fixed_demo_one(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLANNER_PROVIDER", "fixed")
+    with _client(tmp_path) as client:
+        assert client.get("/health").json()["planner_provider"] == "fixed"
 
 
 def test_a_run_is_accepted_at_once_and_finishes_with_a_report(tmp_path):

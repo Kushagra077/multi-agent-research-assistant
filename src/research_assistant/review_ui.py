@@ -29,6 +29,13 @@ client = ApiClient(API_URL)
 st.set_page_config(page_title="Research review", layout="wide")
 st.title("Research assistant: review")
 
+health = client.health()
+if health and health.get("planner_provider") == "fixed":
+    st.info(
+        "Demo mode: the plan is fixed, not written by a model. Searching, the Jev "
+        "checks, the writer and this review are real."
+    )
+
 # --- sidebar: start a run, or open one ----------------------------------------
 with st.sidebar:
     st.header("Start a run")

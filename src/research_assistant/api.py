@@ -220,7 +220,11 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict:
-        return {"ok": True}
+        from research_assistant.llm.providers import planner_provider_name
+
+        # The provider is reported so the review page can say when the plan is a fixed
+        # demo plan ("fixed") and not one a model wrote.
+        return {"ok": True, "planner_provider": planner_provider_name()}
 
     @app.post("/runs", status_code=202, response_model=Started)
     def start_run(

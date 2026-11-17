@@ -15,6 +15,25 @@ load_dotenv()  # Load environment variables from .env file
 # Gemini's free tier kept answering 504 DEADLINE_EXCEEDED at the 30 s timeout (and
 # gemini-3.8-flash earlier failed with 503/504), which stopped every run at the planner.
 DEFAULT_PLANNER_PROVIDER = "groq"
+# "fixed" is a labelled demo mode: no model writes the plan; the subtasks below (or
+# DEMO_PLAN, subtasks separated by "|") are used every time, so a recording can show the
+# same thing twice. Research, Jev and the review stay real. These three are the guitar
+# plan from the real runs in which the Jev gate rejected two quora.com pages (about Python
+# and drawing) on the third subtask and Jev chose a retry.
+DEMO_SUBTASKS = (
+    (
+        "What practice routine and daily schedule works best for an adult beginner "
+        "learning guitar?"
+    ),
+    (
+        "Should an adult beginner learn guitar from online lessons, a teacher, or "
+        "books, and what are the trade-offs?"
+    ),
+    (
+        "What are the most common mistakes adult beginners make when learning guitar, "
+        "and how can they be avoided?"
+    ),
+)
 PLANNER_MODEL = "gemini-3.6-flash"  # used when the provider is gemini
 GROQ_PLANNER_MODEL = "openai/gpt-oss-20b"
 RESEARCHER_MODEL = "openai/gpt-oss-20b"
@@ -63,8 +82,34 @@ class _GroqPlanner:
         return Plan(subtasks=[Subtask(description=d) for d in descriptions])
 
 
+class _FixedPlanner:
+    """The demo planner: same interface as the others, but returns a fixed plan.
+
+    Each call makes new subtask ids, like a real plan, so two runs never share ids.
+    """
+
+    def __init__(self, descriptions: tuple[str, ...]):
+        self._descriptions = descriptions
+
+    def with_structured_output(self, schema):
+        if schema is not Plan:
+            raise ValueError("This planner only produces a Plan.")
+        return self
+
+    def invoke(self, messages) -> Plan:
+        return Plan(subtasks=[Subtask(description=d) for d in self._descriptions])
+
+
+def planner_provider_name() -> str:
+    """The planner provider in use: groq (default), gemini or fixed."""
+    return os.getenv("PLANNER_PROVIDER", DEFAULT_PLANNER_PROVIDER).strip().lower()
+
+
 def get_planner_llm():
-    provider = os.getenv("PLANNER_PROVIDER", DEFAULT_PLANNER_PROVIDER).strip().lower()
+    provider = planner_provider_name()
+    if provider == "fixed":
+        custom = [d.strip() for d in os.getenv("DEMO_PLAN", "").split("|") if d.strip()]
+        return _FixedPlanner(tuple(custom) or DEMO_SUBTASKS)
     if provider == "gemini":
         return init_chat_model(
             model_provider="google-genai",
@@ -83,7 +128,9 @@ def get_planner_llm():
                 max_retries=PLANNER_MAX_RETRIES,
             )
         )
-    raise ValueError(f"PLANNER_PROVIDER must be 'groq' or 'gemini', not {provider!r}.")
+    raise ValueError(
+        f"PLANNER_PROVIDER must be 'groq', 'gemini' or 'fixed', not {provider!r}."
+    )
 
 
 def get_researcher_llm() -> BaseChatModel:

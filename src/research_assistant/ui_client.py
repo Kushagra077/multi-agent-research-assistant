@@ -39,6 +39,14 @@ class ApiClient:
             raise ApiError(self._detail(response))
         return response.json()
 
+    def health(self) -> dict | None:
+        """The API's health report, or None if it cannot be reached."""
+        try:
+            response = self._request("GET", "/health")
+        except ApiError:
+            return None
+        return None if response.is_error else response.json()
+
     def start(self, question: str) -> dict:
         return self._checked(
             self._request("POST", "/runs", json={"question": question})

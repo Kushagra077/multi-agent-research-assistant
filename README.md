@@ -86,7 +86,7 @@ the `fallback` flag tells a real answer from a default.
 The trade-off: Jev only judges what it is shown. It scores a page against a question, but
 it cannot check a claim against its source, and it cannot write. Those stay with the LLMs
 and the human. I did not benchmark Jev against an equivalent LLM call, so I make no speed
-comparison here; the measured numbers are below.
+comparison on a real run; the one small comparison I did make is below.
 
 ## What a real run looked like
 
@@ -100,6 +100,13 @@ and [retry loop run](docs/evidence/2026-11-16-retry-loop-real-run.md).
   median **0.50 s**, 95th percentile 0.60 s, slowest 0.7 s. The earlier notebook run (13
   calls) had a mean of about 0.7 s and one slow call of 1.8 s. These are measured from the
   log lines, one request at a time; no LLM was timed for comparison.
+- **Jev against an LLM judge, on saved pages:** 35 pages from earlier runs, 7 of them off-topic
+  (the text never says "guitar"). Jev and the project's Groq model, given the same question
+  and levels, each dropped all 7. Jev wrongly dropped 1 of the 28 on-topic pages (a borderline
+  forum thread at 0.90) and the LLM judge none. Per call, Jev took a median 0.57 s (95th
+  percentile 0.95 s) and the LLM judge 3.0 s (7.9 s). Small sample, one topic, and the LLM is
+  a reasoning model on a rate-limited free tier, so this is not a general speed claim. Notes:
+  [Jev vs an LLM judge](docs/evidence/2026-11-17-jev-vs-llm-judge.md).
 - **A bad source filtered:** for one subtask, Tavily returned two quora.com threads about
   Python and drawing. Jev scored both **0.01** (confidence 0.98) and the answer check said
   no.
@@ -192,7 +199,9 @@ are at `/docs`.
 Set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` to trace graph and LLM calls in
 LangSmith, and the Jev calls too (shown with the page text replaced by its length). It is
 off by default: with it on, prompts, which contain research questions and page text, are
-sent to LangSmith.
+sent to LangSmith. **Untested against a real LangSmith account:** the wiring is covered by
+tests (the Jev inputs are redacted, and tracing is forced off in the test suite), but I never
+turned it on for a real run.
 
 ## Tests
 

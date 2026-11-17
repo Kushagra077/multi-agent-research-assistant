@@ -21,3 +21,16 @@ class Plan(BaseModel):
         min_length=1,
         description="2 to 3 subtasks that together answer the question.",
     )
+
+
+class PlanDraft(BaseModel):
+    """What a model that cannot take a Plan's generated ids writes: descriptions only.
+
+    Used with Groq's strict JSON mode, where every field must be required. The code, not
+    the model, makes the ids (see llm/providers.py).
+    """
+
+    subtasks: list[str] = Field(
+        description="2 to 3 specific, self-contained research questions that together "
+        "answer the question. Each must make sense on its own."
+    )

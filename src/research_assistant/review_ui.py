@@ -93,7 +93,10 @@ for subtask in run["subtasks"]:
                     "verdict": {True: "kept", False: "dropped", None: "not scored"}[
                         source["kept"]
                     ],
-                    "score (0-2)": source["score"],
+                    # Text, so the table shows 1.19 and not 1.1900.
+                    "score (0-2)": (
+                        "n/a" if source["score"] is None else f"{source['score']:.2f}"
+                    ),
                     "url": source["url"],
                 }
                 for source in subtask["sources"]

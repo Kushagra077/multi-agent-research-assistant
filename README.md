@@ -28,7 +28,8 @@ flowchart TD
     human_review -->|"approve / take over"| final([final report])
 ```
 
-1. **Plan.** An LLM (Gemini) splits the question into 2 to 3 self-contained subtasks.
+1. **Plan.** An LLM (Groq by default, Gemini optional) splits the question into 2 to 3
+   self-contained subtasks.
 2. **Research.** One researcher per subtask runs in parallel (LangGraph `Send`). Each
    searches the web (Tavily), reads the page text, and answers from those pages only (Groq).
    Failures become typed results (`found`, `no_results`, `failed`), never exceptions, so one
@@ -105,8 +106,8 @@ cp .env.example .env     # then fill in the keys
 
 | Key | For | Notes |
 |---|---|---|
-| `GEMINI_API_KEY` | planner | free tier; it has returned 504s |
-| `GROQ_API_KEY` | researchers and writer | free tier, tight token limit |
+| `GROQ_API_KEY` | planner, researchers and writer | free tier, tight token limit |
+| `GEMINI_API_KEY` | planner, only if `PLANNER_PROVIDER=gemini` | free tier; it often answers 504 |
 | `TAVILY_API_KEY` | web search | |
 | `TYPESAFE_API_KEY` | Jev | `jev-1.13.0` is pinned |
 
@@ -165,8 +166,11 @@ mid-run, and resumes it.
 
 ## Known limits
 
-- **The planner is the weak link.** Gemini's free tier often returns 504 at the 30 s
-  timeout, which stops the run at the planner. Resuming works once it answers.
+- **The planner's provider.** Gemini's free tier often answered 504 at the 30 s timeout,
+  which stopped the run at the planner, so the planner defaults to Groq
+  (`PLANNER_PROVIDER=gemini` switches back). Groq now carries the planner, the researchers
+  and the writer on one small free token budget, so a 429 is more likely than before; a
+  run that hits one can be resumed.
 - **Weak sources can still pass.** The cutoff (1.0 of 2) and the minimum page length
   (300 characters) came from a handful of runs. In one run a very short Instagram post
   scored 1.03, and the report's weakest bullets came from it.

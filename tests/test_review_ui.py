@@ -145,8 +145,8 @@ def test_the_sources_table_shows_kept_or_dropped_with_the_score():
         (r["verdict"], r["score (0-2)"], r["url"]) for r in rows[0].to_dict("records")
     }
     assert verdicts == {
-        ("kept", 1.9, "https://good.com/a"),
-        ("dropped", 0.01, "https://quora.com/q"),
+        ("kept", "1.90", "https://good.com/a"),
+        ("dropped", "0.01", "https://quora.com/q"),
     }
 
 

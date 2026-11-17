@@ -26,3 +26,6 @@ design_decision.md
 
 # Checkpoint databases (contain questions and research text)
 *.db
+
+# Browser-automation snapshots
+.playwright-mcp/

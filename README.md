@@ -46,6 +46,21 @@ flowchart TD
 7. **Human review.** The run pauses. A person approves, rejects with feedback (the writer
    redrafts, then the run waits again), or replaces the report with their own text.
 
+## What it looks like
+
+The review page, on an approved run: each subtask's answer, its sources with Jev's score and
+whether the source was kept, Jev's ship verdict, and the delivered report (the planner is in
+demo mode here, which the page says in the blue banner).
+
+![An approved run in the review page](docs/screenshots/01-approved-run.png)
+
+A subtask for which no usable answer was found: both pages of each attempt were scored 0.01 to
+0.14 by Jev and dropped, Jev chose to retry once and then the retry limit sent it to a human,
+and Jev's ship check says the draft is not ready. The rejected answer is shown, labelled, and
+kept out of the report.
+
+![A subtask that needs a human](docs/screenshots/02-escalated-subtask.png)
+
 ## Where Jev is used, and why not an LLM call
 
 Jev answers with a typed value and a probability instead of text, so there is nothing to
@@ -85,7 +100,16 @@ and [retry loop run](docs/evidence/2026-11-16-retry-loop-real-run.md).
   no.
 - **A sensible retry:** Jev chose `retry_different` (0.97; `escalate` got 0.00). The retry
   skipped quora.com and passed, and only that subtask was checked again.
-- **Reproducible:** a second run returned the same pages and scores within 0.01 to 0.07.
+- **Reproducible:** a second run returned the same pages and scores within 0.01 to 0.07. A
+  later day returned different pages for the same plan, so search results are not fixed.
+- **Off-topic pages, caught and escalated:** with a deliberately vague subtask (the word
+  "guitar" left out, as a planner slip once did), Jev scored the fitness pages 0.14, 0.01,
+  0.01 and 0.02, chose `retry_different` (1.00), and after the retry limit the subtask went to
+  a human; the report lists it under "Could not be answered" and the ship check said not ready.
+  See [the run](docs/evidence/2026-11-17-vague-subtask-escalation.md).
+- **A pause that survives a restart:** a run waiting for review was approved after the API
+  container was restarted, with nothing redone
+  ([log](docs/evidence/2026-11-17-pause-survives-restart.md)).
 
 ## Checkpointing and human-in-the-loop together
 
@@ -171,7 +195,7 @@ sent to LangSmith.
 pytest
 ```
 
-256 tests, and none of them touches the network: the planner, researcher and writer LLMs,
+286 tests, and none of them touches the network: the planner, researcher and writer LLMs,
 Tavily and Jev are all faked. A guard in `tests/conftest.py` makes every Jev and writer call
 fail or return a canned value even if a test forgets its own fake, and forces tracing off.
 The crash-recovery test starts the real entry point as a separate process, kills it

@@ -82,7 +82,10 @@ else:  # interrupted
 
 # --- what the researchers found ------------------------------------------------
 for subtask in run["subtasks"]:
-    label = f"{subtask['description']}  [{subtask['status']}]"
+    # A subtask that escalated has a finding with status "found" (an answer exists), but
+    # one Jev rejected: "found" would mislead, so say what it is.
+    shown_status = "needs a human" if subtask["needs_human"] else subtask["status"]
+    label = f"{subtask['description']}  [{shown_status}]"
     with st.expander(label, expanded=subtask["needs_human"]):
         if subtask["attempts"] > 1:
             st.caption(f"{subtask['attempts']} attempts (the newest is shown)")
@@ -93,6 +96,11 @@ for subtask in run["subtasks"]:
         elif subtask["next_step"]:
             st.caption(f"Jev's choice after a weak attempt: {subtask['next_step']}")
         if subtask["answer"]:
+            if subtask["addresses_subtask"] is False:
+                st.caption(
+                    "The last attempt's answer, which the Jev check rejected as not "
+                    "addressing the subtask (it is not used in the report):"
+                )
             st.write(subtask["answer"])
         if subtask["sources"]:
             rows = [
@@ -121,9 +129,14 @@ if ship:
         st.warning(f"Jev: the draft is NOT ready ({why}{confidence}).")
 
 if run["report"]:
-    st.markdown("### Draft report")
-    with st.container(border=True):
-        st.markdown(run["report"])
+    if status == "done" and run["final"]:
+        # The delivered report is shown below; the draft is only kept for reference.
+        with st.expander("Draft report, as it was shown for review"):
+            st.markdown(run["report"])
+    else:
+        st.markdown("### Draft report")
+        with st.container(border=True):
+            st.markdown(run["report"])
 
 if run["feedback"]:
     st.markdown("### Earlier rejections")

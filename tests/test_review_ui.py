@@ -228,3 +228,38 @@ def test_no_demo_banner_with_a_real_planner_or_an_unreachable_api():
     for report in ({"ok": True, "planner_provider": "groq"}, None):
         FakeApi.health_report = report
         assert not any("Demo mode" in i.value for i in _app().info)
+
+
+def test_an_escalated_subtask_is_labelled_as_needing_a_human_not_as_found():
+    app = _app()
+    labels = [e.label for e in app.expander]
+    assert "Sub two  [needs a human]" in labels
+    assert "Sub one  [found]" in labels
+
+
+def test_a_rejected_answer_is_labelled_as_rejected_and_not_used():
+    run = _run()
+    run["subtasks"][1]["answer"] = "An off-topic answer."
+    FakeApi.run = run
+    app = _app()
+    captions = [c.value for c in app.caption]
+    assert any(
+        "Jev check rejected" in c and "not used in the report" in c for c in captions
+    )
+
+
+def test_an_accepted_answer_gets_no_rejection_caption():
+    app = _app()  # subtask one addresses its subtask
+    assert not any("Jev check rejected" in c.value for c in app.caption)
+
+
+def test_on_a_finished_run_the_draft_is_folded_away_and_the_delivered_report_is_shown():
+    FakeApi.run = _run(
+        status="done", final={"text": "The final text.", "how": "approved"}
+    )
+    app = _app()
+    assert "Draft report, as it was shown for review" in [e.label for e in app.expander]
+    assert "### Draft report" not in [m.value for m in app.markdown]
+    assert "### Delivered report (approved as drafted)" in [
+        m.value for m in app.markdown
+    ]

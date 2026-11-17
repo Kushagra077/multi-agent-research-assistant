@@ -67,3 +67,11 @@ def _short_fake_pages_are_allowed(monkeypatch):
     test_merge.py turns it back on for the tests that are about it.
     """
     monkeypatch.setattr(merge_module, "MIN_SOURCE_CHARS", 0)
+
+
+@pytest.fixture(autouse=True)
+def _planner_settings_do_not_leak_in_from_dot_env(monkeypatch):
+    """A developer's .env may set PLANNER_PROVIDER=fixed (demo mode) or a DEMO_PLAN; the
+    providers module loads .env when it is imported. Tests must see the defaults."""
+    monkeypatch.delenv("PLANNER_PROVIDER", raising=False)
+    monkeypatch.delenv("DEMO_PLAN", raising=False)

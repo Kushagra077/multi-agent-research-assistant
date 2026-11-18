@@ -48,10 +48,14 @@ flowchart TD
 
 ## What it looks like
 
-**Demo video:** [docs/demo/walkthrough.mp4](docs/demo/walkthrough.mp4) (98 s, no sound). It is
+**Demo video:** [docs/demo/walkthrough.mp4](docs/demo/walkthrough.mp4) (107 s, no sound). It is
 a captioned slideshow of screenshots from one real run: Jev scoring sources, a rejection with
-feedback, a redraft, an API restart while the run waits, and the approval. The plan is in
-demo mode, as the page's banner says.
+feedback, a redraft, an API restart while the run waits, and the approval, then a LangSmith
+trace from a separate run and the measured numbers. The plan is in demo mode, as the page's
+banner says.
+
+**Design notes:** [docs/DESIGN.md](docs/DESIGN.md) covers why it is built this way, what broke,
+what was measured and what was not verified.
 
 The review page, on an approved run: each subtask's answer, its sources with Jev's score and
 whether the source was kept, Jev's ship verdict, and the delivered report (the planner is in
@@ -234,6 +238,10 @@ mid-run, and resumes it.
   are per section, not per sentence.
 - **Sequential Jev calls.** One request per source and per question; batching them into
   one request is an unfinished optimisation.
+- **Jev needs a key with credit.** The author's credits end on 2026-11-19. Without Jev the run
+  still goes end to end on the fail-soft defaults in the table above (keep every source, assume
+  every answer addresses its subtask, escalate every weak subtask, mark every draft not
+  ready), which the tests cover with a failing client, but the Jev decisions are not exercised.
 - **Single reviewer, single process, no auth.** Two people reviewing the same run is not
   handled, the API keeps which runs it is working on in memory, and there is no login.
 
@@ -249,5 +257,5 @@ src/research_assistant/
   llm/          providers.py (the only place LLM clients are built)
   api.py        FastAPI app          review_ui.py + ui_client.py   Streamlit page
   main.py       command-line entry point
-docs/evidence/  notes from the real runs
+docs/evidence/  notes from the real runs     docs/DESIGN.md  design notes
 ```

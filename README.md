@@ -223,6 +223,17 @@ fail or return a canned value even if a test forgets its own fake, and forces tr
 The crash-recovery test starts the real entry point as a separate process, kills it
 mid-run, and resumes it.
 
+## What I would build next
+
+1. **Check claims against their sources.** Show Jev one claim together with the page text it
+   came from, and flag unsupported claims to the reviewer. This is the biggest gap (see
+   "Jev does not verify claims" below). It needs citations per sentence first, because today
+   they are per section.
+2. **Batch the Jev calls.** One request per subtask instead of one per source and per
+   question, to cut the roughly 10 sequential calls of a run.
+3. **Check subtasks in code.** Reject a plan whose subtask shares no content word with the
+   question, instead of relying on the planner prompt to name the subject.
+
 ## Known limits
 
 - **The planner's provider.** Gemini's free tier often answered 504 at the 30 s timeout,
@@ -259,3 +270,7 @@ src/research_assistant/
   main.py       command-line entry point
 docs/evidence/  notes from the real runs     docs/DESIGN.md  design notes
 ```
+
+## License
+
+[MIT](LICENSE)

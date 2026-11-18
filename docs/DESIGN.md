@@ -16,8 +16,9 @@ Numbers link to notes in [docs/evidence/](evidence/).
 5. [Models, search and rate limits](#models-search-and-rate-limits)
 6. [What broke](#what-broke)
 7. [What was measured](#what-was-measured)
-8. [What was not verified, and known limits](#what-was-not-verified-and-known-limits)
-9. [Testing](#testing)
+8. [What I would build next](#what-i-would-build-next)
+9. [What was not verified, and known limits](#what-was-not-verified-and-known-limits)
+10. [Testing](#testing)
 
 ---
 
@@ -231,13 +232,29 @@ linked notes.
   spans with the page text replaced by its length (the Groq and Tavily spans do contain page
   text).
 
+## What I would build next
+
+In this order, because each step makes the next one cheaper:
+
+1. **Per-sentence citations.** Today a citation covers a section. The writer would tag each
+   claim with the source it came from, so a claim and its source can be looked at together.
+2. **A claim check.** Show Jev (or a second model) one claim and the text of the source it
+   cites, and flag the unsupported ones to the reviewer on the review page. This closes the
+   biggest gap below: the ship check sees only the draft, so it cannot tell a supported claim
+   from an invented one. Jev's typed answer fits a yes/no per claim, but whether it beats an
+   LLM here would need the same kind of measured comparison as the source gate.
+3. **Batch the Jev calls** into one request per subtask, to cut the roughly 10 sequential
+   calls of a run.
+4. **A plan check in code:** reject a plan whose subtask shares no content word with the
+   question, instead of relying on the prompt to name the subject.
+
 ## What was not verified, and known limits
 
 - **No claim is checked against its source.** The researcher answers from the pages and the
   writer sees only the answers, so the ship check judges completeness and coherence, not
   whether a statement is supported. In one run a table said an in-person teacher costs
   "similar or higher" than online lessons, and I could not tie that line to a cited page. A
-  check that shows Jev a claim together with its sources is the most valuable thing not built.
+  check that shows Jev a claim together with its sources is the first thing on the "next" list above.
 - **A vague subtask that still names a plausible but wrong subject** would not be caught by
   giving Jev the original question. The stress test used a subtask with the subject missing.
 - **The planner's prompt rule is a request, not a guarantee.** A code check (every subtask

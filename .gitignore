@@ -24,8 +24,11 @@ design_decision.md
 *.ipynb
 .ipynb_checkpoints/
 
-# Checkpoint databases (contain questions and research text)
+# Checkpoint databases (contain questions and research text), including the
+# -shm / -wal files SQLite writes next to them in WAL mode
 *.db
+*.db-shm
+*.db-wal
 
 # Browser-automation snapshots
 .playwright-mcp/

@@ -199,9 +199,13 @@ are at `/docs`.
 Set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` to trace graph and LLM calls in
 LangSmith, and the Jev calls too (shown with the page text replaced by its length). It is
 off by default: with it on, prompts, which contain research questions and page text, are
-sent to LangSmith. **Untested against a real LangSmith account:** the wiring is covered by
-tests (the Jev inputs are redacted, and tracing is forced off in the test suite), but I never
-turned it on for a real run.
+sent to LangSmith. Checked on one real run (2026-11-18, a tracing-only key): the whole graph
+appeared as one trace of 38 runs (planner, researchers, Tavily, Groq calls, `merge`, `writer`,
+`ship_check`), and all 10 Jev calls showed as `jev_score` / `jev_boolean` spans with the
+question, the answer, the confidence and the `fallback` flag. The page text was not in them,
+only its length (`state_chars`). The Groq and Tavily spans do contain page text and prompts.
+
+![A Jev span in LangSmith: inputs show the question and page length, not the page](docs/screenshots/03-langsmith-jev-span.png)
 
 ## Tests
 
